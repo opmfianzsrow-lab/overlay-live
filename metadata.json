@@ -1,0 +1,6 @@
+{
+  "name": "Streamer 1v1 Queue & OBS Overlay",
+  "description": "Dashboard Antrian 1v1 Streamer dengan integrasi Sociabuzz, real-time OBS Browser Source Overlay, dan halaman viewer join.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
