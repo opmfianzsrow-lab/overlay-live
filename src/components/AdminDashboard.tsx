@@ -38,6 +38,8 @@ import type {
   QueueStats,
   Player,
   MembershipType,
+  UserProfile,
+  WebhookEvent,
 } from '../types/queue';
 import { EditPlayerModal } from './modals/EditPlayerModal';
 import { AddPlayerModal } from './modals/AddPlayerModal';
@@ -45,20 +47,31 @@ import { SociabuzzSimulatorModal } from './modals/SociabuzzSimulatorModal';
 import { OverlayView } from './OverlayView';
 
 interface AdminDashboardProps {
-  adminPin: string;
+  user?: UserProfile;
+  sessionToken?: string;
+  adminPin?: string;
   onLogout: () => void;
 }
 
-type TabType = 'dashboard' | 'queue' | 'donations' | 'overlay' | 'settings';
+type TabType = 'dashboard' | 'queue' | 'donations' | 'overlay' | 'sociabuzz' | 'settings';
 type UiThemeType = 'neobrutalism' | 'dark';
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogout }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  user,
+  sessionToken,
+  adminPin = 'streamer123',
+  onLogout,
+}) => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [settings, setSettings] = useState<OverlaySettings | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
+  const [selectedWebhookLog, setSelectedWebhookLog] = useState<WebhookEvent | null>(null);
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
+  const [copiedWebhookSecret, setCopiedWebhookSecret] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // UI Theme state (Neobrutalism vs Dark Esports)
@@ -108,12 +121,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
   // Helper API caller
   const callAdminApi = useCallback(
     async (url: string, body?: unknown) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+      if (adminPin) headers['x-admin-pin'] = adminPin;
+
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-pin': adminPin,
-        },
+        headers,
         body: body ? JSON.stringify(body) : undefined,
       });
       if (!res.ok) {
@@ -122,7 +138,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
       }
       return res.json();
     },
-    [adminPin]
+    [sessionToken, adminPin]
   );
 
   // Toggle UI Theme
@@ -139,9 +155,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
   // Fetch full dashboard
   const fetchDashboard = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/dashboard', {
-        headers: { 'x-admin-pin': adminPin },
-      });
+      const headers: Record<string, string> = {};
+      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+      if (adminPin) headers['x-admin-pin'] = adminPin;
+
+      const res = await fetch('/api/admin/dashboard', { headers });
       if (res.status === 401) {
         onLogout();
         return;
@@ -153,6 +171,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
       setDonations(data.donations);
       setStats(data.stats);
       setLogs(data.logs);
+      if (data.webhook_events) setWebhookEvents(data.webhook_events);
 
       // If user has not manually overridden theme locally, respect server setting
       if (data.settings?.dashboard_ui_theme && !localStorage.getItem('dashboard_ui_theme')) {
@@ -163,13 +182,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
     } finally {
       setLoading(false);
     }
-  }, [adminPin, onLogout]);
+  }, [sessionToken, adminPin, onLogout]);
 
   // Initial load + Realtime SSE listener
   useEffect(() => {
     fetchDashboard();
 
-    const eventSource = new EventSource(`/api/realtime?pin=${encodeURIComponent(adminPin)}`);
+    const streamUrl = `/api/realtime?session_token=${encodeURIComponent(sessionToken || '')}&pin=${encodeURIComponent(adminPin || '')}`;
+    const eventSource = new EventSource(streamUrl);
 
     eventSource.addEventListener('init', (e) => {
       try {
@@ -195,6 +215,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
         if (payload.queue) setQueue(payload.queue);
         if (payload.stats) setStats(payload.stats);
         if (payload.logs) setLogs(payload.logs);
+        // Refresh dashboard on webhook or donation events
+        if (payload.reason?.includes('sociabuzz') || payload.reason?.includes('donation')) {
+          fetchDashboard();
+        }
       } catch (err) {
         console.error('Error parsing admin queue_update SSE:', err);
       }
@@ -203,7 +227,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminPin, onLogo
     return () => {
       eventSource.close();
     };
-  }, [adminPin, fetchDashboard]);
+  }, [sessionToken, adminPin, fetchDashboard]);
 
   // Actions (Non-blocking with instant feedback & optimistic updates)
   const handleNextMatch = async () => {

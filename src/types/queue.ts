@@ -34,9 +34,28 @@ export interface Donation {
   created_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  created_at: string;
+}
+
+export interface OverlayToken {
+  id: string;
+  user_id: string;
+  token: string;
+  created_at: string;
+  revoked_at?: string;
+}
+
 export interface OverlaySettings {
   id: string;
+  user_id?: string;
   streamer_token: string;
+  webhook_key?: string;
+  webhook_secret?: string;
   title: string;
   theme: 'obsidian' | 'cyber' | 'crimson' | 'imperial' | 'purple' | 'minimal';
   font_size: 'small' | 'medium' | 'large';
@@ -55,21 +74,37 @@ export interface OverlaySettings {
   live_badge_text: string;
   hide_playing_in_overlay?: boolean;
   dashboard_ui_theme?: 'neobrutalism' | 'dark';
+  
+  // Custom appearance options
+  panel_width?: number; // default 440
+  show_id?: boolean;
+  show_vip_badge?: boolean;
+  show_live_badge?: boolean;
+  border_radius?: number;
+  enable_animation?: boolean;
+  animation_speed?: 'slow' | 'normal' | 'fast';
+  custom_bg_color?: string;
+  custom_text_color?: string;
+  custom_accent_color?: string;
+
   created_at: string;
   updated_at: string;
 }
 
 export interface WebhookEvent {
   id: string;
+  user_id?: string;
   provider: 'sociabuzz';
   external_event_id: string;
   payload: Record<string, unknown>;
   processed: boolean;
+  error?: string;
   created_at: string;
 }
 
 export interface ActivityLog {
   id: string;
+  user_id?: string;
   text: string;
   type: 'join' | 'play' | 'done' | 'skip' | 'donation' | 'reorder' | 'edit';
   timestamp: string;
@@ -82,3 +117,4 @@ export interface QueueStats {
   total_donations_today: number;
   next_player: QueueItem | null;
 }
+

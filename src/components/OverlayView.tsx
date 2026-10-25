@@ -166,22 +166,29 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
     },
   }[settings?.font_size || 'medium'];
 
+  const panelWidth = settings?.panel_width || 440;
+  const showId = settings?.show_id !== false;
+  const showVipBadge = settings?.show_vip_badge !== false;
+  const showLiveBadge = settings?.show_live_badge !== false;
+
   return (
     <div
       className={`${
-        isPreviewMode ? 'w-full flex items-center justify-center p-2' : 'p-3 sm:p-4 inline-block'
+        isPreviewMode ? 'w-full flex items-center justify-center p-2' : 'p-2 sm:p-3 inline-block'
       } bg-transparent select-none overflow-visible`}
     >
       {/* 
         REACT BITS ANIMATED-LIST FRAMED CONTAINER:
         - Sleek rounded-2xl with dual inset beveled edge highlight
         - Deep gradient backdrop with blur(20px) saturate(1.6)
-        - Stops immediately after last player card + padding (h-fit)
-        - max-h-[82vh] with hidden scrollbars
+        - Stops immediately after last player card + padding (h-auto / dynamic height)
+        - max-h-[85vh] with hidden scrollbars if queue is long
       */}
       <div
-        className="rb-frame w-[440px] max-w-[94vw] h-fit max-h-[82vh] flex flex-col rounded-[22px] overflow-hidden transition-all duration-300"
+        className="rb-frame max-w-[96vw] h-auto max-h-[85vh] flex flex-col rounded-[22px] overflow-hidden transition-all duration-300"
         style={{
+          width: isPreviewMode ? '100%' : `${panelWidth}px`,
+          maxWidth: `${panelWidth}px`,
           backgroundColor: `rgba(${currentTheme.frameRgba}, ${opacityVal})`,
         }}
       >
@@ -189,7 +196,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
         <span className="rb-frame-rim" aria-hidden="true" />
 
         {/* HEADER: Centered at top, swords icon scales proportionally with text */}
-        <div className="h-[58px] px-4 shrink-0 flex items-center justify-center border-b border-white/[0.08] bg-black/25 relative z-10">
+        <div className="h-[56px] px-4 shrink-0 flex items-center justify-center border-b border-white/[0.08] bg-black/25 relative z-10">
           {/* Centered Title with proportional swords icon */}
           <div className="flex items-center justify-center gap-2 text-center max-w-[75%]">
             {!titleText.includes('⚔') && (
@@ -307,37 +314,41 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
                         </div>
 
                         {/* ID Game + Badges row */}
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span
-                            className={`font-mono text-[rgba(244,244,245,0.6)] tracking-wider ${fontSizeClasses.sub}`}
-                          >
-                            {item.player.game_id}
-                          </span>
+                        {(showId || showVipBadge) && (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {showId && (
+                              <span
+                                className={`font-mono text-[rgba(244,244,245,0.6)] tracking-wider ${fontSizeClasses.sub}`}
+                              >
+                                {item.player.game_id}
+                              </span>
+                            )}
 
-                          {/* VIP / VVIP badge */}
-                          {item.player.membership === 'VVIP' && (
-                            <span
-                              className={`inline-flex items-center gap-1 font-black px-1.5 py-0.5 rounded-md bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 text-black uppercase tracking-wider shadow-sm ${fontSizeClasses.badge}`}
-                            >
-                              <Crown className="w-2.5 h-2.5 fill-black stroke-black" />
-                              VVIP
-                            </span>
-                          )}
+                            {/* VIP / VVIP badge */}
+                            {showVipBadge && item.player.membership === 'VVIP' && (
+                              <span
+                                className={`inline-flex items-center gap-1 font-black px-1.5 py-0.5 rounded-md bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 text-black uppercase tracking-wider shadow-sm ${fontSizeClasses.badge}`}
+                              >
+                                <Crown className="w-2.5 h-2.5 fill-black stroke-black" />
+                                VVIP
+                              </span>
+                            )}
 
-                          {item.player.membership === 'VIP' && (
-                            <span
-                              className={`inline-flex items-center gap-1 font-black px-1.5 py-0.5 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 text-white uppercase tracking-wider shadow-sm ${fontSizeClasses.badge}`}
-                            >
-                              <Sparkles className="w-2.5 h-2.5" />
-                              VIP
-                            </span>
-                          )}
-                        </div>
+                            {showVipBadge && item.player.membership === 'VIP' && (
+                              <span
+                                className={`inline-flex items-center gap-1 font-black px-1.5 py-0.5 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 text-white uppercase tracking-wider shadow-sm ${fontSizeClasses.badge}`}
+                              >
+                                <Sparkles className="w-2.5 h-2.5" />
+                                VIP
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Right: LIVE badge if active */}
-                    {isPlaying && (
+                    {isPlaying && showLiveBadge && (
                       <div className="shrink-0 pl-2 z-10">
                         <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600 text-white font-black text-[10px] tracking-wider uppercase border border-red-400/80 shadow-[0_0_10px_rgba(239,68,68,0.45)]">
                           <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
