@@ -487,7 +487,7 @@ app.post('/api/admin/simulate-donation', requireAuth, (req: AuthenticatedRequest
   );
 
   realtimeHub.broadcastQueueChange(userId, 'simulated_donation');
-  res.json({ success: true, ...result });
+  res.json(result);
 });
 
 /* ==========================================================================

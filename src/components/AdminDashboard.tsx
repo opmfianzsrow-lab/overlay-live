@@ -29,6 +29,10 @@ import {
   Moon,
   Sun,
   AlertCircle,
+  Eye,
+  EyeOff,
+  Code,
+  ShieldCheck,
 } from 'lucide-react';
 import type {
   QueueItem,
@@ -74,13 +78,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [copiedWebhookSecret, setCopiedWebhookSecret] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // UI Theme state (Neobrutalism vs Dark Esports)
+  // UI Theme state (Apple Minimal Obsidian vs Neobrutalism)
   const [uiTheme, setUiTheme] = useState<UiThemeType>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dashboard_ui_theme');
       if (saved === 'dark' || saved === 'neobrutalism') return saved;
     }
-    return 'neobrutalism';
+    return 'dark';
   });
 
   // Copy feedback state
@@ -383,10 +387,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // URL Helpers
   const domain = typeof window !== 'undefined' ? window.location.origin : 'https://DOMAIN';
   const overlayUrl = `${domain}/overlay/${settings?.streamer_token || 'TOKEN'}`;
-  const joinUrl = `${domain}/join`;
+  const joinUrl = `${domain}/join?streamer=${settings?.streamer_token || ''}`;
   const sociabuzzUrl = settings?.sociabuzz_url || 'https://sociabuzz.com/prostreamer';
+  const webhookKey = settings?.webhook_key || settings?.streamer_token || 'KEY';
+  const webhookUrl = `${domain}/api/webhooks/sociabuzz/${webhookKey}`;
+  const webhookSecret = settings?.webhook_secret || 'sb_sec_default';
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
 
-  const copyToClipboard = (text: string, type: 'overlay' | 'sociabuzz' | 'join') => {
+  const copyToClipboard = (
+    text: string,
+    type: 'overlay' | 'sociabuzz' | 'join' | 'webhook-url' | 'webhook-secret'
+  ) => {
     navigator.clipboard.writeText(text);
     if (type === 'overlay') {
       setCopiedLink(true);
@@ -397,27 +408,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } else if (type === 'join') {
       setCopiedJoin(true);
       setTimeout(() => setCopiedJoin(false), 2000);
+    } else if (type === 'webhook-url') {
+      setCopiedWebhookUrl(true);
+      setTimeout(() => setCopiedWebhookUrl(false), 2000);
+    } else if (type === 'webhook-secret') {
+      setCopiedWebhookSecret(true);
+      setTimeout(() => setCopiedWebhookSecret(false), 2000);
     }
   };
 
-  const isNeo = uiTheme === 'neobrutalism';
+  const isNeo = false;
 
   if (loading && !settings) {
     return (
-      <div
-        className={`min-h-screen flex items-center justify-center font-black ${
-          isNeo ? 'bg-[#F5F2EB] text-black' : 'bg-zinc-950 text-white'
-        }`}
-      >
-        <div
-          className={`p-6 rounded-2xl flex items-center gap-3 ${
-            isNeo
-              ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-              : 'bg-zinc-900 border border-zinc-800'
-          }`}
-        >
-          <RefreshCw className="w-6 h-6 animate-spin text-current" />
-          <span>MEMUAT DASHBOARD STREAMER...</span>
+      <div className="min-h-screen flex items-center justify-center bg-[#000000] text-white">
+        <div className="apple-card p-6 rounded-3xl flex items-center gap-3">
+          <RefreshCw className="w-5 h-5 animate-spin text-zinc-400" />
+          <span className="text-xs font-medium tracking-tight text-zinc-300">Memuat Dashboard Streamer...</span>
         </div>
       </div>
     );
@@ -428,47 +435,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const nextItem = queuedItems[0] || null;
 
   return (
-    <div
-      className={`min-h-screen flex flex-col md:flex-row font-sans transition-colors duration-200 relative ${
-        isNeo
-          ? 'bg-[#F5F2EB] text-black selection:bg-[#FFE600] selection:text-black'
-          : 'bg-zinc-950 text-zinc-100 selection:bg-red-600 selection:text-white'
-      }`}
-    >
+    <div className="min-h-screen flex flex-col md:flex-row font-sans relative bg-[#000000] text-zinc-100 selection:bg-white/20 selection:text-white antialiased">
       {/* Global In-App Notification Toast */}
       {toast && (
         <div className="fixed top-5 right-5 z-[100] max-w-sm animate-in fade-in slide-in-from-top-4 duration-200">
           <div
-            className={`px-4 py-3 rounded-xl flex items-center gap-3 transition-all ${
-              isNeo
-                ? `border-[2.5px] border-black shadow-[4px_4px_0px_0px_#000] text-black ${
-                    toast.type === 'success'
-                      ? 'bg-[#4EFE82]'
-                      : toast.type === 'error'
-                      ? 'bg-[#FF4D4D] text-white'
-                      : 'bg-[#FFE600]'
-                  }`
-                : `border shadow-2xl backdrop-blur-md ${
-                    toast.type === 'success'
-                      ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200'
-                      : toast.type === 'error'
-                      ? 'bg-rose-950/95 border-rose-500/50 text-rose-200'
-                      : 'bg-zinc-900/95 border-zinc-700 text-zinc-200'
-                  }`
+            className={`apple-glass border border-white/[0.12] shadow-2xl backdrop-blur-2xl px-4 py-3 rounded-2xl flex items-center gap-3 ${
+              toast.type === 'success'
+                ? 'text-emerald-300'
+                : toast.type === 'error'
+                ? 'text-red-300'
+                : 'text-zinc-200'
             }`}
           >
             {toast.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 shrink-0 stroke-[2.5]" />
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-[#30d158]" />
             ) : toast.type === 'error' ? (
-              <AlertCircle className="w-5 h-5 shrink-0 stroke-[2.5]" />
+              <AlertCircle className="w-4 h-4 shrink-0 text-[#ff453a]" />
             ) : (
-              <Sparkles className="w-5 h-5 shrink-0 stroke-[2.5]" />
+              <Sparkles className="w-4 h-4 shrink-0 text-[#2997ff]" />
             )}
-            <p className="text-xs font-black tracking-wide leading-snug">{toast.message}</p>
+            <p className="text-xs font-medium tracking-tight leading-snug">{toast.message}</p>
             <button
               type="button"
               onClick={() => setToast(null)}
-              className="ml-auto text-xs font-black opacity-70 hover:opacity-100 cursor-pointer px-1"
+              className="ml-auto text-xs opacity-60 hover:opacity-100 cursor-pointer px-1 text-zinc-400 hover:text-white"
             >
               ✕
             </button>
@@ -476,83 +467,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* SIDEBAR NAVIGATION */}
-      <aside
-        className={`w-full md:w-68 flex flex-col justify-between shrink-0 z-20 transition-colors duration-200 ${
-          isNeo ? 'bg-white border-r-[3px] border-black' : 'bg-zinc-900/90 border-r border-zinc-800'
-        }`}
-      >
+      {/* SIDEBAR NAVIGATION - APPLE MINIMAL FROSTED */}
+      <aside className="w-full md:w-68 flex flex-col justify-between shrink-0 z-20 transition-colors duration-200 bg-black/60 border-r border-white/[0.08] backdrop-blur-2xl">
         <div>
           {/* Logo / Brand Header */}
-          <div
-            className={`p-5 flex items-center gap-3 ${
-              isNeo
-                ? 'border-b-[3px] border-black bg-[#FFE600]'
-                : 'border-b border-zinc-800 bg-zinc-950/40'
-            }`}
-          >
-            <div
-              className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                isNeo
-                  ? 'bg-[#FF4D4D] border-2 border-black text-white shadow-[3px_3px_0px_0px_#000]'
-                  : 'bg-red-600/20 border border-red-500/30 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
-              }`}
-            >
-              <Swords className="w-6 h-6 stroke-[2.5]" />
+          <div className="p-5 flex items-center gap-3 border-b border-white/[0.08] bg-white/[0.02]">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-white/[0.08] border border-white/[0.12] text-white shadow-inner">
+              <Swords className="w-5 h-5 stroke-[2]" />
             </div>
             <div>
-              <h2 className="font-black text-lg tracking-tight uppercase leading-tight">
-                1v1 STREAMER
+              <h2 className="font-semibold text-base tracking-[-0.02em] text-white leading-tight">
+                ANTRIAN 1V1
               </h2>
-              <span
-                className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                  isNeo
-                    ? 'bg-black text-[#FFE600] border border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                    : 'text-red-400 bg-red-950/60 border border-red-500/30'
-                }`}
-              >
-                Control Hub ★
+              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-tight text-zinc-400 bg-white/[0.04] border border-white/[0.06]">
+                Studio Control Hub
               </span>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-3.5 space-y-2">
+          <nav className="p-3.5 space-y-1">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'dashboard'
-                  ? isNeo
-                    ? 'bg-[#FFE600] text-black border-2 border-black shadow-[4px_4px_0px_0px_#000] translate-x-[-1px] translate-y-[-1px]'
-                    : 'bg-red-600 text-white shadow-lg shadow-red-950/40'
-                  : isNeo
-                  ? 'bg-white text-black hover:bg-zinc-100 border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+                  ? 'bg-white text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
-              <LayoutDashboard className="w-4 h-4 stroke-[2.5]" />
+              <LayoutDashboard className="w-4 h-4" />
               <span>Dashboard</span>
             </button>
 
             <button
               onClick={() => setActiveTab('queue')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'queue'
-                  ? isNeo
-                    ? 'bg-[#00E5FF] text-black border-2 border-black shadow-[4px_4px_0px_0px_#000] translate-x-[-1px] translate-y-[-1px]'
-                    : 'bg-red-600 text-white shadow-lg shadow-red-950/40'
-                  : isNeo
-                  ? 'bg-white text-black hover:bg-zinc-100 border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+                  ? 'bg-white text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Users className="w-4 h-4 stroke-[2.5]" />
+                <Users className="w-4 h-4" />
                 <span>Antrian 1v1</span>
               </div>
               <span
-                className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                  isNeo ? 'bg-black text-white border border-black' : 'bg-zinc-800 text-zinc-300'
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                  activeTab === 'queue' ? 'bg-black/10 text-black' : 'bg-white/[0.08] text-zinc-300'
                 }`}
               >
                 {queue.length}
@@ -561,25 +522,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <button
               onClick={() => setActiveTab('donations')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'donations'
-                  ? isNeo
-                    ? 'bg-[#4EFE82] text-black border-2 border-black shadow-[4px_4px_0px_0px_#000] translate-x-[-1px] translate-y-[-1px]'
-                    : 'bg-red-600 text-white shadow-lg shadow-red-950/40'
-                  : isNeo
-                  ? 'bg-white text-black hover:bg-zinc-100 border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+                  ? 'bg-white text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Coins className="w-4 h-4 stroke-[2.5]" />
+                <Coins className="w-4 h-4 text-[#ffd60a]" />
                 <span>Donasi Sociabuzz</span>
               </div>
               <span
-                className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                  isNeo
-                    ? 'bg-[#FFE600] text-black border border-black'
-                    : 'bg-zinc-800 text-amber-400'
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                  activeTab === 'donations' ? 'bg-black/10 text-black' : 'bg-white/[0.08] text-amber-300'
                 }`}
               >
                 {donations.length}
@@ -588,63 +543,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <button
               onClick={() => setActiveTab('overlay')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'overlay'
-                  ? isNeo
-                    ? 'bg-[#FF5B89] text-white border-2 border-black shadow-[4px_4px_0px_0px_#000] translate-x-[-1px] translate-y-[-1px]'
-                    : 'bg-red-600 text-white shadow-lg shadow-red-950/40'
-                  : isNeo
-                  ? 'bg-white text-black hover:bg-zinc-100 border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+                  ? 'bg-white text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
-              <Tv className="w-4 h-4 stroke-[2.5]" />
+              <Tv className="w-4 h-4 text-[#2997ff]" />
               <span>OBS Overlay</span>
             </button>
 
             <button
-              onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
-                activeTab === 'settings'
-                  ? isNeo
-                    ? 'bg-[#A259FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_#000] translate-x-[-1px] translate-y-[-1px]'
-                    : 'bg-red-600 text-white shadow-lg shadow-red-950/40'
-                  : isNeo
-                  ? 'bg-white text-black hover:bg-zinc-100 border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+              onClick={() => setActiveTab('sociabuzz')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
+                activeTab === 'sociabuzz'
+                  ? 'bg-white text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
-              <SettingsIcon className="w-4 h-4 stroke-[2.5]" />
+              <div className="flex items-center gap-3">
+                <Zap className="w-4 h-4 text-[#30d158]" />
+                <span>Sociabuzz Webhook</span>
+              </div>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  webhookEvents.length > 0 ? 'bg-[#30d158]' : 'bg-[#ffd60a]'
+                }`}
+                title={webhookEvents.length > 0 ? 'Webhook Aktif' : 'Menunggu Notifikasi'}
+              />
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
+                activeTab === 'settings'
+                  ? 'bg-white text-black font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
+              }`}
+            >
+              <SettingsIcon className="w-4 h-4" />
               <span>Pengaturan</span>
             </button>
           </nav>
         </div>
 
         {/* Sidebar Footer */}
-        <div
-          className={`p-4 space-y-2.5 ${
-            isNeo ? 'border-t-[3px] border-black bg-zinc-50' : 'border-t border-zinc-800 bg-zinc-950/30'
-          }`}
-        >
+        <div className="p-4 space-y-2.5 border-t border-white/[0.08] bg-white/[0.01]">
           {/* Quick Viewer Join Link Box */}
-          <div
-            className={`p-3 rounded-xl text-xs ${
-              isNeo
-                ? 'bg-white border-2 border-black shadow-[3px_3px_0px_0px_#000]'
-                : 'bg-zinc-800/70 border border-zinc-700/60'
-            }`}
-          >
+          <div className="apple-card p-3 rounded-2xl text-xs">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="font-black text-[10px] uppercase">Link Viewer</span>
+              <span className="text-[10px] uppercase font-medium text-zinc-500">Link Viewer</span>
               <button
                 onClick={() => copyToClipboard(joinUrl, 'join')}
-                className={`px-2 py-0.5 rounded text-[10px] font-black flex items-center gap-1 cursor-pointer ${
-                  isNeo
-                    ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                    : 'text-cyan-400 hover:text-cyan-300'
-                }`}
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1 cursor-pointer transition-colors bg-white/[0.08] hover:bg-white/[0.14] text-zinc-300"
               >
-                {copiedJoin ? <Check className="w-3 h-3 stroke-[3]" /> : <Copy className="w-3 h-3" />}
+                {copiedJoin ? <Check className="w-3 h-3 text-[#30d158]" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedJoin ? 'Tersalin' : 'Copy'}</span>
               </button>
             </div>
@@ -652,9 +605,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               href={joinUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className={`font-mono font-bold text-[11px] truncate block ${
-                isNeo ? 'text-black hover:underline' : 'text-zinc-300 hover:text-white'
-              }`}
+              className="font-mono text-[11px] truncate block text-zinc-400 hover:text-white transition-colors"
             >
               /join
             </a>
@@ -662,109 +613,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={onLogout}
-            className={`w-full py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              isNeo
-                ? 'bg-white hover:bg-[#FF4D4D] hover:text-white text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                : 'bg-zinc-800 hover:bg-zinc-750 text-zinc-400 hover:text-red-400'
-            }`}
+            className="w-full py-2.5 px-3 rounded-full text-xs font-medium tracking-tight flex items-center justify-center gap-2 transition-all cursor-pointer bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-white border border-white/[0.06]"
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>Kunci Dashboard</span>
+            <span>Keluar Sesi</span>
           </button>
         </div>
       </aside>
-
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 overflow-y-auto max-h-screen">
-        {/* Top Header Bar */}
-        <header
-          className={`px-6 py-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-10 transition-colors duration-200 ${
-            isNeo
-              ? 'bg-white border-b-[3px] border-black shadow-[0_4px_0_0_#000]'
-              : 'bg-zinc-900/90 border-b border-zinc-800 backdrop-blur-md'
-          }`}
-        >
+      <main className="flex-1 overflow-y-auto max-h-screen bg-[#000000]">
+        {/* Top Header Bar - Frosted Apple Minimal */}
+        <header className="px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-10 bg-black/50 border-b border-white/[0.08] backdrop-blur-2xl">
           {/* Sociabuzz Quick Copy Box */}
-          <div
-            className={`flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl ${
-              isNeo
-                ? 'bg-[#FFFDE8] border-2 border-black shadow-[3px_3px_0px_0px_#000]'
-                : 'bg-black/40 border border-amber-500/30'
-            }`}
-          >
-            <span
-              className={`px-1.5 py-0.5 font-black text-[10px] rounded uppercase ${
-                isNeo ? 'bg-black text-[#FFE600]' : 'text-amber-300'
-              }`}
-            >
+          <div className="apple-card px-3.5 py-1.5 rounded-full flex items-center gap-2.5">
+            <span className="px-2 py-0.5 text-[10px] rounded-full font-medium tracking-tight bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30">
               Sociabuzz
             </span>
-            <span
-              className={`text-xs font-mono font-bold truncate max-w-[200px] sm:max-w-xs ${
-                isNeo ? 'text-black' : 'text-zinc-300'
-              }`}
-            >
+            <span className="text-xs font-mono truncate max-w-[180px] sm:max-w-xs text-zinc-400">
               {sociabuzzUrl}
             </span>
             <button
               onClick={() => copyToClipboard(sociabuzzUrl, 'sociabuzz')}
-              className={`ml-1 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase flex items-center gap-1 transition-all cursor-pointer ${
-                isNeo
-                  ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border border-black shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                  : 'bg-amber-400 hover:bg-amber-300 text-black shadow-sm'
-              }`}
+              className="ml-1 px-2.5 py-1 rounded-full text-[10px] font-medium tracking-tight flex items-center gap-1 transition-all cursor-pointer bg-white/[0.08] hover:bg-white/[0.14] text-zinc-300"
             >
-              {copiedDonation ? <Check className="w-3 h-3 stroke-[3]" /> : <Copy className="w-3 h-3" />}
-              <span>{copiedDonation ? 'Copied!' : 'Copy'}</span>
+              {copiedDonation ? <Check className="w-3 h-3 text-[#30d158]" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedDonation ? 'Copied' : 'Copy'}</span>
             </button>
           </div>
 
-          {/* Quick Header Actions: UI Style Switcher & Action buttons */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* 2-Option UI Style Switcher Button */}
-            <button
-              onClick={() => handleToggleUiTheme()}
-              title="Ganti Gaya Tampilan UI Dashboard (Neobrutalism vs Dark Esports)"
-              className={`px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                isNeo
-                  ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 shadow-sm'
-              }`}
-            >
-              {isNeo ? (
-                <>
-                  <Palette className="w-4 h-4 stroke-[2.5]" />
-                  <span>UI: Neobrutalism (Ganti ke Dark 🌙)</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-4 h-4 text-cyan-400" />
-                  <span>UI: Obsidian Dark (Ganti ke Neo 🎨)</span>
-                </>
-              )}
-            </button>
-
+          {/* Quick Header Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowSimModal(true)}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                isNeo
-                  ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                  : 'bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-              }`}
+              className="apple-button-secondary py-1.5 px-3.5 text-xs rounded-full flex items-center gap-1.5 cursor-pointer"
             >
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>Simulasi</span>
+              <Zap className="w-3.5 h-3.5 text-[#ffd60a]" />
+              <span>Simulasi Webhook</span>
             </button>
 
             <button
               onClick={() => setShowAddModal(true)}
-              className={`px-3.5 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                isNeo
-                  ? 'bg-[#4EFE82] hover:bg-[#3de870] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                  : 'bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-950/50'
-              }`}
+              className="apple-button-primary py-1.5 px-4 text-xs rounded-full flex items-center gap-1.5 cursor-pointer"
             >
-              <UserPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <UserPlus className="w-3.5 h-3.5" />
               <span>Tambah Player</span>
             </button>
           </div>
@@ -773,167 +664,274 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB 1: DASHBOARD OVERVIEW */}
         {activeTab === 'dashboard' && (
           <div className="p-6 space-y-6">
-            {/* 4 Metric Cards */}
+            {/* Warning Banner: If Sociabuzz not connected (Section 23) */}
+            {webhookEvents.length === 0 && (
+              <div className="p-4 rounded-3xl flex flex-wrap items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/20 text-amber-200">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-2xl shrink-0 bg-amber-500/20 border border-amber-500/30">
+                    <AlertCircle className="w-5 h-5 text-[#ffd60a]" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-xs tracking-tight text-white">
+                      Sociabuzz Belum Terhubung
+                    </h4>
+                    <p className="text-xs text-zinc-400 font-normal mt-0.5">
+                      Hubungkan Sociabuzz untuk mengaktifkan automatic queue saat penonton mengirim donasi mabar.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveTab('sociabuzz')}
+                    className="apple-button-primary px-3.5 py-2 rounded-full text-xs font-medium cursor-pointer"
+                  >
+                    Hubungkan Sociabuzz
+                  </button>
+                  <button
+                    onClick={() => setShowSimModal(true)}
+                    className="apple-button-secondary px-3.5 py-2 rounded-full text-xs font-medium cursor-pointer"
+                  >
+                    Test Notifikasi
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Streamer Setup Onboarding Progress */}
+            <div className="apple-card p-5 rounded-3xl space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="font-semibold text-xs tracking-tight text-white flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-[#ffd60a]" />
+                    <span>Setup Streamer Onboarding</span>
+                  </span>
+                  <p className="text-[11px] text-zinc-400 font-normal mt-0.5">
+                    Langkah mudah memulai live stream dengan antrian otomatis dan OBS overlay.
+                  </p>
+                </div>
+                <div className="px-3 py-1 rounded-full text-xs font-medium bg-white/[0.06] text-zinc-300 border border-white/[0.08]">
+                  Progress:{' '}
+                  {[
+                    Boolean(user || sessionToken),
+                    queue.length > 0,
+                    webhookEvents.length > 0,
+                    Boolean(settings),
+                    copiedLink,
+                  ].filter(Boolean).length}
+                  /5 Selesai
+                </div>
+              </div>
+
+              {/* Steps Checklist */}
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 text-xs font-medium">
+                {/* Step 1 */}
+                <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#30d158] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[11px] truncate text-white">1. Akun Google</div>
+                    <div className="text-[10px] text-zinc-400 truncate">{user?.name || 'Terhubung'}</div>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div
+                  onClick={() => setActiveTab('queue')}
+                  className={`p-3 rounded-2xl border flex items-center gap-2.5 cursor-pointer transition-all ${
+                    queue.length > 0
+                      ? 'bg-white/[0.03] border-white/[0.06]'
+                      : 'bg-white/[0.01] border-dashed border-white/[0.1] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {queue.length > 0 ? (
+                    <CheckCircle2 className="w-4 h-4 text-[#30d158] shrink-0" />
+                  ) : (
+                    <span className="w-3.5 h-3.5 rounded-full border border-zinc-500 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[11px] truncate text-white">2. Buat Queue</div>
+                    <div className="text-[10px] text-zinc-400 truncate">{queue.length} Player aktif</div>
+                  </div>
+                </div>
+
+                {/* Step 3 */}
+                <div
+                  onClick={() => setActiveTab('sociabuzz')}
+                  className={`p-3 rounded-2xl border flex items-center gap-2.5 cursor-pointer transition-all ${
+                    webhookEvents.length > 0
+                      ? 'bg-white/[0.03] border-white/[0.06]'
+                      : 'bg-white/[0.01] border-dashed border-white/[0.1] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {webhookEvents.length > 0 ? (
+                    <CheckCircle2 className="w-4 h-4 text-[#30d158] shrink-0" />
+                  ) : (
+                    <span className="w-3.5 h-3.5 rounded-full border border-zinc-500 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[11px] truncate text-white">3. Sociabuzz</div>
+                    <div className="text-[10px] text-zinc-400 truncate">
+                      {webhookEvents.length > 0 ? `${webhookEvents.length} Event` : 'Hubungkan URL'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 4 */}
+                <div
+                  onClick={() => setActiveTab('settings')}
+                  className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2.5 cursor-pointer hover:bg-white/[0.06] transition-all"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-[#30d158] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[11px] truncate text-white">4. Atur Overlay</div>
+                    <div className="text-[10px] text-zinc-400 truncate">{settings?.theme || 'Default'}</div>
+                  </div>
+                </div>
+
+                {/* Step 5 */}
+                <div
+                  onClick={() => {
+                    copyToClipboard(overlayUrl, 'overlay');
+                    showNotification('Link OBS Browser Source berhasil disalin!', 'success');
+                  }}
+                  className={`p-3 rounded-2xl border flex items-center gap-2.5 cursor-pointer transition-all ${
+                    copiedLink
+                      ? 'bg-[#2997ff]/10 border-[#2997ff]/30 text-[#2997ff]'
+                      : 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06]'
+                  }`}
+                >
+                  {copiedLink ? (
+                    <CheckCircle2 className="w-4 h-4 text-[#2997ff] shrink-0" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-zinc-400 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[11px] truncate text-white">5. Pasang OBS</div>
+                    <div className="text-[10px] text-zinc-400 truncate">Salin link overlay</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4 Metric Cards - Apple Minimal Precision */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Total Antrian */}
-              <div
-                className={`p-5 rounded-2xl transition-all ${
-                  isNeo
-                    ? 'bg-[#00E5FF] border-[3px] border-black shadow-[5px_5px_0px_0px_#000] text-black'
-                    : 'bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs font-black uppercase mb-1">
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
                   <span>Total Antrian</span>
-                  <Users className="w-5 h-5 stroke-[2.5]" />
+                  <div className="w-7 h-7 rounded-full bg-[#2997ff]/10 border border-[#2997ff]/20 flex items-center justify-center text-[#2997ff]">
+                    <Users className="w-3.5 h-3.5" />
+                  </div>
                 </div>
-                <div className="text-3xl font-black">{stats?.total_queued ?? queue.length}</div>
-                <div className={`text-[11px] font-bold mt-0.5 ${isNeo ? 'text-zinc-800' : 'text-zinc-500'}`}>
-                  Menunggu giliran
+                <div className="text-3xl font-semibold tracking-tight text-white">{stats?.total_queued ?? queue.length}</div>
+                <div className="text-[11px] text-zinc-500 mt-1 font-normal">
+                  Menunggu giliran main
                 </div>
               </div>
 
               {/* Sedang Bermain */}
-              <div
-                className={`p-5 rounded-2xl transition-all ${
-                  isNeo
-                    ? 'bg-[#FF5B89] border-[3px] border-black shadow-[5px_5px_0px_0px_#000] text-white'
-                    : 'bg-zinc-900 border border-zinc-800 text-red-400 shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs font-black uppercase mb-1">
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
                   <span>Sedang Bermain</span>
-                  <Radio className="w-5 h-5 stroke-[2.5] animate-pulse" />
+                  <div className="w-7 h-7 rounded-full bg-[#ff453a]/10 border border-[#ff453a]/20 flex items-center justify-center text-[#ff453a]">
+                    <Radio className="w-3.5 h-3.5 animate-pulse" />
+                  </div>
                 </div>
-                <div className="text-3xl font-black truncate">
-                  {playingItem ? playingItem.player.name : 'KOSONG'}
+                <div className="text-xl sm:text-2xl font-semibold tracking-tight text-white truncate">
+                  {playingItem ? playingItem.player.name : 'Kosong'}
                 </div>
-                <div className={`text-[11px] font-bold mt-0.5 truncate ${isNeo ? 'text-white/90' : 'text-zinc-500'}`}>
+                <div className="text-[11px] text-zinc-500 mt-1 font-normal truncate">
                   {playingItem ? `ID: ${playingItem.player.game_id}` : 'Belum ada player aktif'}
                 </div>
               </div>
 
               {/* Selesai Hari Ini */}
-              <div
-                className={`p-5 rounded-2xl transition-all ${
-                  isNeo
-                    ? 'bg-[#4EFE82] border-[3px] border-black shadow-[5px_5px_0px_0px_#000] text-black'
-                    : 'bg-zinc-900 border border-zinc-800 text-emerald-400 shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs font-black uppercase mb-1">
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
                   <span>Selesai Hari Ini</span>
-                  <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+                  <div className="w-7 h-7 rounded-full bg-[#30d158]/10 border border-[#30d158]/20 flex items-center justify-center text-[#30d158]">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  </div>
                 </div>
-                <div className="text-3xl font-black">{stats?.done_today ?? 0}</div>
-                <div className={`text-[11px] font-bold mt-0.5 ${isNeo ? 'text-zinc-800' : 'text-zinc-500'}`}>
-                  Pertandingan rampung
+                <div className="text-3xl font-semibold tracking-tight text-white">{stats?.done_today ?? 0}</div>
+                <div className="text-[11px] text-zinc-500 mt-1 font-normal">
+                  Pertandingan selesai
                 </div>
               </div>
 
               {/* Total Donasi */}
-              <div
-                className={`p-5 rounded-2xl transition-all ${
-                  isNeo
-                    ? 'bg-[#FFE600] border-[3px] border-black shadow-[5px_5px_0px_0px_#000] text-black'
-                    : 'bg-zinc-900 border border-zinc-800 text-amber-400 shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs font-black uppercase mb-1">
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-2">
                   <span>Donasi Hari Ini</span>
-                  <Coins className="w-5 h-5 stroke-[2.5]" />
+                  <div className="w-7 h-7 rounded-full bg-[#ffd60a]/10 border border-[#ffd60a]/20 flex items-center justify-center text-[#ffd60a]">
+                    <Coins className="w-3.5 h-3.5" />
+                  </div>
                 </div>
-                <div className="text-2xl sm:text-3xl font-black">
+                <div className="text-2xl sm:text-3xl font-semibold tracking-tight text-white font-mono">
                   Rp {(stats?.total_donations_today ?? 0).toLocaleString('id-ID')}
                 </div>
-                <div className={`text-[11px] font-bold mt-0.5 ${isNeo ? 'text-zinc-800' : 'text-zinc-500'}`}>
+                <div className="text-[11px] text-zinc-500 mt-1 font-normal">
                   Dari Sociabuzz
                 </div>
               </div>
             </div>
 
-            {/* Match Spotlight Cards */}
+            {/* Match Spotlight Cards - Apple Minimal Frosted Glass */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Active Player Card */}
               <div
-                className={`rounded-2xl overflow-hidden ${
+                className={`rounded-3xl overflow-hidden ${
                   isNeo
                     ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                    : 'bg-gradient-to-br from-zinc-900 via-zinc-900 to-[#1e0f11] border border-red-500/30 shadow-xl'
+                    : 'apple-glass rounded-3xl border border-white/[0.1] shadow-2xl'
                 }`}
               >
                 <div
-                  className={`px-5 py-3.5 flex items-center justify-between ${
+                  className={`px-6 py-4 flex items-center justify-between ${
                     isNeo
                       ? 'bg-[#FF4D4D] border-b-[2.5px] border-black text-white'
-                      : 'border-b border-white/10 bg-black/40 text-red-400'
+                      : 'border-b border-white/[0.08] bg-white/[0.02]'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
-                    <span className="font-black text-xs uppercase tracking-wider">
-                      Sedang Bermain (LIVE)
+                  <div className="flex items-center gap-2.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    <span className="font-semibold text-xs tracking-tight text-white">
+                      Sedang Bertanding (LIVE)
                     </span>
                   </div>
                   {playingItem && (
-                    <span
-                      className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase ${
-                        isNeo
-                          ? 'bg-black text-white border border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                          : 'bg-red-600 text-white'
-                      }`}
-                    >
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30">
                       #{playingItem.position}
                     </span>
                   )}
                 </div>
 
-                <div className="p-5">
+                <div className="p-6">
                   {playingItem ? (
                     <div className="space-y-4">
                       <div>
-                        <div
-                          className={`text-3xl font-black tracking-tight ${
-                            isNeo ? 'text-black' : 'text-white'
-                          }`}
-                        >
+                        <div className="text-3xl font-semibold tracking-[-0.03em] text-white">
                           {playingItem.player.name}
                         </div>
-                        <div
-                          className={`font-mono text-sm mt-0.5 ${
-                            isNeo ? 'text-zinc-700 font-bold' : 'text-zinc-400'
-                          }`}
-                        >
+                        <div className="font-mono text-sm mt-1 text-zinc-400">
                           ID: {playingItem.player.game_id}
                         </div>
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2.5">
                           <span
-                            className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase ${
-                              isNeo
-                                ? `border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] ${
-                                    playingItem.player.membership === 'VVIP'
-                                      ? 'bg-[#FFE600] text-black'
-                                      : playingItem.player.membership === 'VIP'
-                                      ? 'bg-[#A259FF] text-white'
-                                      : 'bg-black text-white'
-                                  }`
-                                : playingItem.player.membership === 'VVIP'
-                                ? 'bg-amber-400 text-black'
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-tight ${
+                              playingItem.player.membership === 'VVIP'
+                                ? 'bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30'
                                 : playingItem.player.membership === 'VIP'
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-zinc-700 text-zinc-300'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                : 'bg-white/[0.08] text-zinc-300 border border-white/[0.1]'
                             }`}
                           >
                             {playingItem.player.membership}
                           </span>
                           {playingItem.donation && (
-                            <span
-                              className={`text-xs font-mono font-black px-2 py-0.5 rounded ${
-                                isNeo
-                                  ? 'bg-[#FFE600] text-black border border-black'
-                                  : 'text-amber-400'
-                              }`}
-                            >
+                            <span className="text-xs font-mono font-medium px-2.5 py-0.5 rounded-full bg-white/[0.06] text-amber-300 border border-white/[0.08]">
                               Rp {playingItem.donation.amount.toLocaleString('id-ID')}
                             </span>
                           )}
@@ -943,40 +941,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="pt-2 flex items-center gap-2.5">
                         <button
                           onClick={() => handleSetDone(playingItem.id)}
-                          className={`px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                            isNeo
-                              ? 'bg-white hover:bg-zinc-100 text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                              : 'bg-zinc-800 hover:bg-zinc-750 text-white'
-                          }`}
+                          className="apple-button-secondary py-2.5 px-4 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                         >
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500 stroke-[2.5]" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#30d158]" />
                           <span>Selesai (Done)</span>
                         </button>
                         <button
                           onClick={handleNextMatch}
-                          className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                            isNeo
-                              ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                              : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg'
-                          }`}
+                          className="apple-button-primary flex-1 py-2.5 px-4 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <SkipForward className="w-4 h-4 stroke-[2.5]" />
-                          <span>NEXT MATCH</span>
+                          <SkipForward className="w-3.5 h-3.5" />
+                          <span>Next Match</span>
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="py-8 text-center text-zinc-500 font-bold text-sm">
+                    <div className="py-8 text-center text-zinc-500 font-normal text-xs">
                       Tidak ada player yang sedang bermain.
                       {nextItem && (
                         <div className="mt-3">
                           <button
                             onClick={handleNextMatch}
-                            className={`px-4 py-2 rounded-xl font-black text-xs uppercase cursor-pointer ${
-                              isNeo
-                                ? 'bg-[#FFE600] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000]'
-                                : 'bg-red-600 text-white'
-                            }`}
+                            className="apple-button-primary px-4 py-2 text-xs rounded-full cursor-pointer"
                           >
                             Mulai Match Sekarang
                           </button>
@@ -989,81 +975,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* Next Player Spotlight Card */}
               <div
-                className={`rounded-2xl overflow-hidden ${
+                className={`rounded-3xl overflow-hidden ${
                   isNeo
                     ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                    : 'bg-gradient-to-br from-zinc-900 via-zinc-900 to-[#1f1a10] border border-amber-500/30 shadow-xl'
+                    : 'apple-glass rounded-3xl border border-white/[0.08] shadow-2xl'
                 }`}
               >
                 <div
-                  className={`px-5 py-3.5 flex items-center justify-between ${
+                  className={`px-6 py-4 flex items-center justify-between ${
                     isNeo
                       ? 'bg-[#FFE600] border-b-[2.5px] border-black text-black'
-                      : 'border-b border-white/10 bg-black/40 text-amber-400'
+                      : 'border-b border-white/[0.08] bg-white/[0.02]'
                   }`}
                 >
-                  <span className="font-black text-xs uppercase tracking-wider">
+                  <span className="font-semibold text-xs tracking-tight text-white">
                     Next Player (Berikutnya)
                   </span>
                   {nextItem && (
-                    <span
-                      className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase ${
-                        isNeo
-                          ? 'bg-black text-white border border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                          : 'bg-amber-400 text-black'
-                      }`}
-                    >
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/[0.08] text-zinc-300 border border-white/[0.1]">
                       #{nextItem.position}
                     </span>
                   )}
                 </div>
 
-                <div className="p-5">
+                <div className="p-6">
                   {nextItem ? (
                     <div className="space-y-4">
                       <div>
-                        <div
-                          className={`text-3xl font-black tracking-tight ${
-                            isNeo ? 'text-black' : 'text-white'
-                          }`}
-                        >
+                        <div className="text-3xl font-semibold tracking-[-0.03em] text-white">
                           {nextItem.player.name}
                         </div>
-                        <div
-                          className={`font-mono text-sm mt-0.5 ${
-                            isNeo ? 'text-zinc-700 font-bold' : 'text-zinc-400'
-                          }`}
-                        >
+                        <div className="font-mono text-sm mt-1 text-zinc-400">
                           ID: {nextItem.player.game_id}
                         </div>
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2.5">
                           <span
-                            className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase ${
-                              isNeo
-                                ? `border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] ${
-                                    nextItem.player.membership === 'VVIP'
-                                      ? 'bg-[#FFE600] text-black'
-                                      : nextItem.player.membership === 'VIP'
-                                      ? 'bg-[#A259FF] text-white'
-                                      : 'bg-black text-white'
-                                  }`
-                                : nextItem.player.membership === 'VVIP'
-                                ? 'bg-amber-400 text-black'
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-tight ${
+                              nextItem.player.membership === 'VVIP'
+                                ? 'bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30'
                                 : nextItem.player.membership === 'VIP'
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-zinc-700 text-zinc-300'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                : 'bg-white/[0.08] text-zinc-300 border border-white/[0.1]'
                             }`}
                           >
                             {nextItem.player.membership}
                           </span>
                           {nextItem.donation && (
-                            <span
-                              className={`text-xs font-mono font-black px-2 py-0.5 rounded ${
-                                isNeo
-                                  ? 'bg-[#FFE600] text-black border border-black'
-                                  : 'text-amber-400'
-                              }`}
-                            >
+                            <span className="text-xs font-mono font-medium px-2.5 py-0.5 rounded-full bg-white/[0.06] text-amber-300 border border-white/[0.08]">
                               Rp {nextItem.donation.amount.toLocaleString('id-ID')}
                             </span>
                           )}
@@ -1073,29 +1031,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="pt-2 flex items-center gap-2.5">
                         <button
                           onClick={() => handleSkip(nextItem.id)}
-                          className={`px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
-                            isNeo
-                              ? 'bg-white hover:bg-zinc-100 text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                              : 'bg-zinc-800 hover:bg-zinc-750 text-zinc-300'
-                          }`}
+                          className="apple-button-secondary py-2.5 px-4 rounded-full text-xs font-medium cursor-pointer"
                         >
                           Skip Player
                         </button>
                         <button
                           onClick={handleNextMatch}
-                          className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                            isNeo
-                              ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                              : 'bg-amber-400 hover:bg-amber-300 text-black shadow-lg shadow-amber-950/40'
-                          }`}
+                          className="apple-button-primary flex-1 py-2.5 px-4 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <Play className="w-4 h-4 fill-current" />
-                          <span>MAIN SEKARANG</span>
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Main Sekarang</span>
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="py-8 text-center text-zinc-500 font-bold text-sm">
+                    <div className="py-8 text-center text-zinc-500 font-normal text-xs">
                       Antrian berikutnya masih kosong.
                     </div>
                   )}
@@ -1104,66 +1054,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Recent Activity Log Feed */}
-            <div
-              className={`rounded-2xl p-6 space-y-4 ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800'
-              }`}
-            >
-              <div
-                className={`flex items-center justify-between pb-3 ${
-                  isNeo ? 'border-b-2 border-black' : 'border-b border-zinc-800'
-                }`}
-              >
-                <h3 className="font-black text-base uppercase tracking-wider">Aktivitas Terbaru</h3>
-                <span
-                  className={`text-xs font-black px-2 py-0.5 rounded ${
-                    isNeo
-                      ? 'bg-black text-[#FFE600] border border-black'
-                      : 'text-zinc-500 font-mono'
-                  }`}
-                >
+            <div className="apple-card rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+                <h3 className="font-semibold text-sm tracking-tight text-white">Aktivitas Terbaru</h3>
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-400 border border-white/[0.08]">
                   REALTIME LOG
                 </span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {logs.length === 0 ? (
-                  <div className="py-4 text-center text-zinc-500 font-bold text-xs">
+                  <div className="py-6 text-center text-zinc-500 font-normal text-xs">
                     Belum ada aktivitas tercatat.
                   </div>
                 ) : (
                   logs.slice(0, 8).map((log) => (
                     <div
                       key={log.id}
-                      className={`p-3 rounded-xl flex items-center justify-between text-xs ${
-                        isNeo
-                          ? 'bg-zinc-50 border-2 border-black shadow-[2.5px_2.5px_0px_0px_#000] text-black'
-                          : 'bg-zinc-800/50 border border-zinc-800 text-zinc-200'
-                      }`}
+                      className="p-3 rounded-2xl flex items-center justify-between text-xs bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
                         <span
-                          className={`w-3 h-3 rounded-md border border-black shadow-[1px_1px_0px_0px_#000] ${
+                          className={`w-2 h-2 rounded-full ${
                             log.type === 'play'
-                              ? 'bg-[#FF4D4D]'
+                              ? 'bg-[#ff453a]'
                               : log.type === 'donation'
-                              ? 'bg-[#FFE600]'
+                              ? 'bg-[#ffd60a]'
                               : log.type === 'join'
-                              ? 'bg-[#00E5FF]'
+                              ? 'bg-[#2997ff]'
                               : log.type === 'done'
-                              ? 'bg-[#4EFE82]'
-                              : 'bg-black'
+                              ? 'bg-[#30d158]'
+                              : 'bg-zinc-400'
                           }`}
                         />
-                        <span className="font-black">{log.text}</span>
+                        <span className="font-medium text-zinc-200">{log.text}</span>
                       </div>
-                      <span
-                        className={`text-[11px] font-mono font-bold ${
-                          isNeo ? 'text-zinc-600' : 'text-zinc-500'
-                        }`}
-                      >
+                      <span className="text-[11px] font-mono text-zinc-500 font-normal">
                         {new Date(log.timestamp).toLocaleTimeString('id-ID')}
                       </span>
                     </div>
@@ -1176,82 +1102,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* TAB 2: ANTRIAN 1V1 (TABLE & ACTIONS) */}
         {activeTab === 'queue' && (
-          <div className="p-6 space-y-5">
+          <div className="p-6 space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-black uppercase tracking-tight">Daftar Antrian 1v1</h2>
-                <p className={`text-xs font-bold mt-0.5 ${isNeo ? 'text-zinc-700' : 'text-zinc-400'}`}>
+                <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white">Daftar Antrian 1v1</h2>
+                <p className="text-xs text-zinc-400 font-normal mt-0.5">
                   Kelola posisi, status, aksi next, skip, remove, dan edit player secara realtime.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={handleNextMatch}
-                  className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                      : 'bg-red-600 hover:bg-red-500 text-white shadow-md'
-                  }`}
+                  className="apple-button-primary px-4 py-2 text-xs rounded-full flex items-center gap-1.5 cursor-pointer"
                 >
-                  <SkipForward className="w-4 h-4 stroke-[2.5]" />
-                  <span>NEXT MATCH</span>
+                  <SkipForward className="w-3.5 h-3.5" />
+                  <span>Next Match</span>
                 </button>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-[#4EFE82] hover:bg-[#3de870] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                      : 'bg-zinc-800 hover:bg-zinc-750 text-white'
-                  }`}
+                  className="apple-button-secondary px-4 py-2 text-xs rounded-full flex items-center gap-1.5 cursor-pointer"
                 >
-                  <UserPlus className="w-4 h-4 stroke-[2.5]" />
+                  <UserPlus className="w-3.5 h-3.5" />
                   <span>Tambah Manual</span>
                 </button>
               </div>
             </div>
 
             {/* Table Container */}
-            <div
-              className={`rounded-2xl overflow-hidden ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800 shadow-xl'
-              }`}
-            >
+            <div className="apple-glass rounded-3xl border border-white/[0.08] shadow-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead
-                    className={`uppercase tracking-wider font-black ${
-                      isNeo
-                        ? 'bg-[#FFE600] text-black border-b-[2.5px] border-black'
-                        : 'bg-zinc-950 text-zinc-400 border-b border-zinc-800'
-                    }`}
-                  >
+                  <thead className="uppercase tracking-wider font-medium text-[11px] bg-white/[0.02] text-zinc-400 border-b border-white/[0.08]">
                     <tr>
-                      <th className="py-4 px-4 w-18 text-center">Posisi</th>
-                      <th className="py-4 px-4">Nama</th>
-                      <th className="py-4 px-4">ID Game</th>
-                      <th className="py-4 px-4">Membership</th>
-                      <th className="py-4 px-4">Donasi</th>
-                      <th className="py-4 px-4">Status</th>
-                      <th className="py-4 px-4 text-center">Action</th>
+                      <th className="py-3.5 px-4 w-16 text-center">Posisi</th>
+                      <th className="py-3.5 px-4">Nama</th>
+                      <th className="py-3.5 px-4">ID Game</th>
+                      <th className="py-3.5 px-4">Membership</th>
+                      <th className="py-3.5 px-4">Donasi</th>
+                      <th className="py-3.5 px-4">Status</th>
+                      <th className="py-3.5 px-4 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody
-                    className={isNeo ? 'divide-y-2 divide-black text-black' : 'divide-y divide-zinc-800/80 text-zinc-300'}
-                  >
+                  <tbody className="divide-y divide-white/[0.04] text-zinc-300">
                     {queue.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-zinc-500 font-bold">
+                        <td colSpan={7} className="py-10 text-center text-zinc-500 font-normal">
                           Antrian saat ini kosong. Viewer dapat mendaftar di halaman{' '}
-                          <code
-                            className={`px-1.5 py-0.5 rounded font-black ${
-                              isNeo
-                                ? 'bg-[#FFE600] text-black border border-black'
-                                : 'text-red-400 bg-zinc-800'
-                            }`}
-                          >
+                          <code className="px-2 py-0.5 rounded-full text-xs font-mono bg-white/[0.08] text-white">
                             /join
                           </code>
                           .
@@ -1264,36 +1162,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <tr
                             key={item.id}
                             className={`transition-colors ${
-                              isNeo
-                                ? isPlaying
-                                  ? 'bg-[#FFF3E6] font-bold'
-                                  : 'hover:bg-zinc-50 font-bold'
-                                : isPlaying
+                              isPlaying
                                 ? 'bg-red-950/20 hover:bg-red-950/30'
-                                : 'hover:bg-zinc-800/40'
+                                : 'hover:bg-white/[0.03]'
                             }`}
                           >
                             {/* Posisi */}
                             <td className="py-3.5 px-4 text-center">
                               <span
-                                className={`inline-block px-2.5 py-1 rounded-lg text-xs font-black ${
-                                  isNeo
-                                    ? `border-2 border-black shadow-[2px_2px_0px_0px_#000] ${
-                                        isPlaying
-                                          ? 'bg-[#FF4D4D] text-white'
-                                          : item.position === 2
-                                          ? 'bg-[#FFE600] text-black'
-                                          : item.position === 3
-                                          ? 'bg-[#A259FF] text-white'
-                                          : 'bg-white text-black'
-                                      }`
-                                    : isPlaying
-                                    ? 'bg-white text-zinc-950 shadow-sm'
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                  isPlaying
+                                    ? 'bg-[#ff453a]/20 text-[#ff453a] border border-[#ff453a]/30'
                                     : item.position === 2
-                                    ? 'bg-amber-400 text-black'
+                                    ? 'bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30'
                                     : item.position === 3
-                                    ? 'bg-purple-600 text-white'
-                                    : 'bg-zinc-800 text-zinc-300'
+                                    ? 'bg-[#bf5af2]/20 text-[#bf5af2] border border-[#bf5af2]/30'
+                                    : 'bg-white/[0.08] text-zinc-300 border border-white/[0.1]'
                                 }`}
                               >
                                 #{item.position}
@@ -1301,84 +1185,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
 
                             {/* Nama */}
-                            <td
-                              className={`py-3.5 px-4 font-black text-sm ${
-                                isNeo ? 'text-black' : 'text-white'
-                              }`}
-                            >
+                            <td className="py-3.5 px-4 font-semibold text-sm text-white">
                               {item.player.name}
                             </td>
 
                             {/* ID Game */}
-                            <td className="py-3.5 px-4 font-mono font-bold">{item.player.game_id}</td>
+                            <td className="py-3.5 px-4 font-mono text-zinc-300">{item.player.game_id}</td>
 
                             {/* Membership */}
                             <td className="py-3.5 px-4">
                               <span
-                                className={`inline-flex items-center gap-1 font-black px-2 py-0.5 rounded text-[10px] uppercase ${
-                                  isNeo
-                                    ? `border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] ${
-                                        item.player.membership === 'VVIP'
-                                          ? 'bg-[#FFE600] text-black'
-                                          : item.player.membership === 'VIP'
-                                          ? 'bg-[#A259FF] text-white'
-                                          : 'bg-black text-white'
-                                      }`
-                                    : item.player.membership === 'VVIP'
-                                    ? 'bg-amber-400 text-black'
+                                className={`inline-flex items-center gap-1 font-medium px-2.5 py-0.5 rounded-full text-[11px] ${
+                                  item.player.membership === 'VVIP'
+                                    ? 'bg-[#ffd60a]/15 text-[#ffd60a] border border-[#ffd60a]/25'
                                     : item.player.membership === 'VIP'
-                                    ? 'bg-purple-600 text-white'
-                                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                                    ? 'bg-[#bf5af2]/15 text-purple-300 border border-purple-500/25'
+                                    : 'bg-white/[0.06] text-zinc-400 border border-white/[0.08]'
                                 }`}
                               >
                                 {item.player.membership === 'VVIP' && (
-                                  <Crown className="w-3 h-3 fill-current" />
+                                  <Crown className="w-3 h-3 fill-current text-[#ffd60a]" />
                                 )}
                                 {item.player.membership === 'VIP' && (
-                                  <Sparkles className="w-3 h-3" />
+                                  <Sparkles className="w-3 h-3 text-[#bf5af2]" />
                                 )}
                                 {item.player.membership}
                               </span>
                             </td>
 
                             {/* Donasi */}
-                            <td className="py-3.5 px-4 font-mono font-black">
+                            <td className="py-3.5 px-4 font-mono">
                               {item.donation ? (
-                                <span
-                                  className={`px-2 py-0.5 rounded text-xs ${
-                                    isNeo
-                                      ? 'bg-[#FFE600] text-black border border-black'
-                                      : 'text-amber-400'
-                                  }`}
-                                >
+                                <span className="px-2.5 py-0.5 rounded-full bg-white/[0.06] text-amber-300 border border-white/[0.08] text-xs font-medium">
                                   Rp {item.donation.amount.toLocaleString('id-ID')}
                                 </span>
                               ) : (
-                                <span className="text-zinc-500">-</span>
+                                <span className="text-zinc-600">-</span>
                               )}
                             </td>
 
                             {/* Status */}
                             <td className="py-3.5 px-4">
                               {isPlaying ? (
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
-                                    isNeo
-                                      ? 'bg-[#FF4D4D] text-white border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                                      : 'bg-red-600 text-white'
-                                  }`}
-                                >
-                                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#ff453a]/15 text-[#ff453a] border border-[#ff453a]/30">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff453a] animate-ping" />
                                   LIVE MATCH
                                 </span>
                               ) : (
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                    isNeo
-                                      ? 'bg-zinc-100 text-black border border-black'
-                                      : 'bg-zinc-800 text-zinc-300'
-                                  }`}
-                                >
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-white/[0.06] text-zinc-400 border border-white/[0.08]">
                                   QUEUED
                                 </span>
                               )}
@@ -1391,11 +1245,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <button
                                     onClick={() => handleSetPlaying(item.id)}
                                     title="Set Sedang Bermain (Play)"
-                                    className={`p-2 rounded-lg cursor-pointer ${
-                                      isNeo
-                                        ? 'bg-[#4EFE82] hover:bg-[#3de870] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                                        : 'bg-zinc-800 hover:bg-emerald-600 text-zinc-300 hover:text-white'
-                                    }`}
+                                    className="p-2 rounded-full cursor-pointer bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/30 transition-all"
                                   >
                                     <Play className="w-3.5 h-3.5 fill-current" />
                                   </button>
@@ -1405,11 +1255,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <button
                                     onClick={() => handleSetDone(item.id)}
                                     title="Tandai Selesai (Done)"
-                                    className={`p-2 rounded-lg cursor-pointer ${
-                                      isNeo
-                                        ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                                        : 'bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white'
-                                    }`}
+                                    className="p-2 rounded-full cursor-pointer bg-[#30d158]/20 hover:bg-[#30d158] text-[#30d158] hover:text-black border border-[#30d158]/30 transition-all"
                                   >
                                     <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
                                   </button>
@@ -1420,13 +1266,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   disabled={isPlaying || idx <= 1}
                                   onClick={() => handleMove(item.id, 'up')}
                                   title="Geser Posisi Ke Atas"
-                                  className={`p-2 rounded-lg cursor-pointer disabled:opacity-30 ${
-                                    isNeo
-                                      ? 'bg-white hover:bg-zinc-100 text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] disabled:shadow-none'
-                                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                                  }`}
+                                  className="p-2 rounded-full cursor-pointer disabled:opacity-20 bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 border border-white/[0.08] transition-all"
                                 >
-                                  <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <ArrowUp className="w-3.5 h-3.5 stroke-[2]" />
                                 </button>
 
                                 {/* Move Down */}
@@ -1434,52 +1276,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   disabled={isPlaying || idx === queue.length - 1}
                                   onClick={() => handleMove(item.id, 'down')}
                                   title="Geser Posisi Ke Bawah"
-                                  className={`p-2 rounded-lg cursor-pointer disabled:opacity-30 ${
-                                    isNeo
-                                      ? 'bg-white hover:bg-zinc-100 text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] disabled:shadow-none'
-                                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                                  }`}
+                                  className="p-2 rounded-full cursor-pointer disabled:opacity-20 bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 border border-white/[0.08] transition-all"
                                 >
-                                  <ArrowDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <ArrowDown className="w-3.5 h-3.5 stroke-[2]" />
                                 </button>
 
                                 {/* Edit */}
                                 <button
                                   onClick={() => setEditingPlayer(item.player)}
                                   title="Edit Player"
-                                  className={`p-2 rounded-lg cursor-pointer ${
-                                    isNeo
-                                      ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                                      : 'bg-zinc-800 hover:bg-cyan-600 text-zinc-300 hover:text-white'
-                                  }`}
+                                  className="p-2 rounded-full cursor-pointer bg-white/[0.05] hover:bg-[#2997ff]/20 text-zinc-300 hover:text-[#2997ff] border border-white/[0.08] transition-all"
                                 >
-                                  <Edit className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <Edit className="w-3.5 h-3.5 stroke-[2]" />
                                 </button>
 
                                 {/* Skip */}
                                 <button
                                   onClick={() => handleSkip(item.id)}
                                   title="Skip Player"
-                                  className={`p-2 rounded-lg cursor-pointer ${
-                                    isNeo
-                                      ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                                      : 'bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-white'
-                                  }`}
+                                  className="p-2 rounded-full cursor-pointer bg-white/[0.05] hover:bg-[#ffd60a]/20 text-zinc-300 hover:text-[#ffd60a] border border-white/[0.08] transition-all"
                                 >
-                                  <SkipForward className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <SkipForward className="w-3.5 h-3.5 stroke-[2]" />
                                 </button>
 
                                 {/* Remove */}
                                 <button
                                   onClick={() => handleRemove(item.id)}
                                   title="Hapus Player"
-                                  className={`p-2 rounded-lg cursor-pointer ${
-                                    isNeo
-                                      ? 'bg-[#FF4D4D] hover:bg-red-600 text-white border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                                      : 'bg-zinc-800 hover:bg-red-600 text-zinc-300 hover:text-white'
-                                  }`}
+                                  className="p-2 rounded-full cursor-pointer bg-white/[0.05] hover:bg-[#ff453a]/20 text-zinc-300 hover:text-[#ff453a] border border-white/[0.08] transition-all"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <Trash2 className="w-3.5 h-3.5 stroke-[2]" />
                                 </button>
                               </div>
                             </td>
@@ -1499,73 +1325,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="p-6 space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-black uppercase tracking-tight">
+                <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white">
                   Riwayat Donasi Sociabuzz
                 </h2>
-                <p className={`text-xs font-bold mt-0.5 ${isNeo ? 'text-zinc-700' : 'text-zinc-400'}`}>
+                <p className="text-xs text-zinc-400 font-normal mt-0.5">
                   Menampilkan data donasi yang masuk melalui webhook atau simulasi Sociabuzz.
                 </p>
               </div>
 
               <button
                 onClick={() => setShowSimModal(true)}
-                className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                  isNeo
-                    ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                    : 'bg-amber-400 hover:bg-amber-300 text-black shadow-md'
-                }`}
+                className="apple-button-primary px-4 py-2 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
               >
-                <Zap className="w-4 h-4 fill-current" />
+                <Zap className="w-3.5 h-3.5 text-[#ffd60a]" />
                 <span>Simulasi Donasi Sociabuzz</span>
               </button>
             </div>
 
             {/* Sociabuzz Webhook Info Box */}
-            <div
-              className={`p-5 rounded-2xl space-y-2.5 ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800'
-              }`}
-            >
+            <div className="apple-card p-5 rounded-3xl space-y-3">
               <div className="flex items-center gap-2">
-                <span
-                  className={`px-2 py-0.5 font-black text-[11px] rounded uppercase ${
-                    isNeo
-                      ? 'bg-[#4EFE82] text-black border border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                      : 'bg-zinc-800 text-zinc-300'
-                  }`}
-                >
+                <span className="px-2.5 py-0.5 text-[10px] font-medium rounded-full bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/25">
                   Webhook URL
                 </span>
-                <h3 className="font-black text-sm uppercase tracking-wider">
+                <h3 className="font-semibold text-xs tracking-tight text-white">
                   Endpoint Integrasi Sociabuzz
                 </h3>
               </div>
-              <p
-                className={`text-xs font-bold leading-relaxed ${
-                  isNeo ? 'text-zinc-700' : 'text-zinc-400'
-                }`}
-              >
+              <p className="text-xs text-zinc-400 font-normal leading-relaxed">
                 Pasang URL ini pada menu Webhook akun Sociabuzz Anda:
               </p>
-              <div className="flex items-center gap-2">
-                <code
-                  className={`px-4 py-2.5 rounded-xl font-mono font-bold text-xs flex-1 truncate ${
-                    isNeo
-                      ? 'bg-zinc-100 border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                      : 'bg-black/60 border border-zinc-800 text-cyan-400'
-                  }`}
-                >
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <code className="px-4 py-2.5 rounded-2xl font-mono text-xs text-cyan-400 bg-white/[0.04] border border-white/[0.08] flex-1 truncate select-all">
                   {domain}/api/webhooks/sociabuzz
                 </code>
                 <button
-                  onClick={() => navigator.clipboard.writeText(`${domain}/api/webhooks/sociabuzz`)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-white'
-                  }`}
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${domain}/api/webhooks/sociabuzz`);
+                    showNotification('Webhook URL tersalin!', 'success');
+                  }}
+                  className="apple-button-secondary px-4 py-2.5 rounded-full text-xs font-medium transition-all cursor-pointer"
                 >
                   Copy URL
                 </button>
@@ -1573,37 +1372,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Donations Table */}
-            <div
-              className={`rounded-2xl overflow-hidden ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800 shadow-xl'
-              }`}
-            >
+            <div className="apple-glass rounded-3xl border border-white/[0.08] shadow-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead
-                    className={`uppercase tracking-wider font-black ${
-                      isNeo
-                        ? 'bg-[#FFE600] text-black border-b-[2.5px] border-black'
-                        : 'bg-zinc-950 text-zinc-400 border-b border-zinc-800'
-                    }`}
-                  >
+                  <thead className="uppercase tracking-wider font-medium text-[11px] bg-white/[0.02] text-zinc-400 border-b border-white/[0.08]">
                     <tr>
-                      <th className="py-4 px-4">Donation ID</th>
-                      <th className="py-4 px-4">Donor Name</th>
-                      <th className="py-4 px-4">Nominal</th>
-                      <th className="py-4 px-4">Pesan</th>
-                      <th className="py-4 px-4">Waktu</th>
-                      <th className="py-4 px-4">Status Klaim</th>
+                      <th className="py-3.5 px-4">Donation ID</th>
+                      <th className="py-3.5 px-4">Donor Name</th>
+                      <th className="py-3.5 px-4">Nominal</th>
+                      <th className="py-3.5 px-4">Pesan</th>
+                      <th className="py-3.5 px-4">Waktu</th>
+                      <th className="py-3.5 px-4">Status Klaim</th>
                     </tr>
                   </thead>
-                  <tbody
-                    className={isNeo ? 'divide-y-2 divide-black text-black' : 'divide-y divide-zinc-800/80 text-zinc-300'}
-                  >
+                  <tbody className="divide-y divide-white/[0.04] text-zinc-300">
                     {donations.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-zinc-500 font-bold">
+                        <td colSpan={6} className="py-10 text-center text-zinc-500 font-normal">
                           Belum ada riwayat donasi.
                         </td>
                       </tr>
@@ -1611,57 +1396,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       donations.map((don) => (
                         <tr
                           key={don.id}
-                          className={isNeo ? 'hover:bg-zinc-50 font-bold' : 'hover:bg-zinc-800/40'}
+                          className="hover:bg-white/[0.03] transition-colors"
                         >
-                          <td className="py-3.5 px-4 font-mono font-black">
+                          <td className="py-3.5 px-4 font-mono text-xs text-zinc-300">
                             {don.external_donation_id}
                           </td>
-                          <td className="py-3.5 px-4 font-black text-sm">{don.donor_name}</td>
-                          <td className="py-3.5 px-4 font-mono font-black">
-                            <span
-                              className={`px-2 py-0.5 rounded text-xs ${
-                                isNeo
-                                  ? 'bg-[#FFE600] text-black border border-black'
-                                  : 'text-amber-400'
-                              }`}
-                            >
+                          <td className="py-3.5 px-4 font-semibold text-sm text-white">{don.donor_name}</td>
+                          <td className="py-3.5 px-4 font-mono">
+                            <span className="px-2.5 py-0.5 rounded-full bg-white/[0.06] text-amber-300 border border-white/[0.08] text-xs font-medium">
                               Rp {don.amount.toLocaleString('id-ID')}
                             </span>
                           </td>
-                          <td
-                            className={`py-3.5 px-4 max-w-xs truncate ${
-                              isNeo ? 'text-zinc-700' : 'text-zinc-400'
-                            }`}
-                          >
+                          <td className="py-3.5 px-4 max-w-xs truncate text-zinc-400">
                             {don.message || '-'}
                           </td>
-                          <td
-                            className={`py-3.5 px-4 font-mono text-[11px] ${
-                              isNeo ? 'text-zinc-600' : 'text-zinc-500'
-                            }`}
-                          >
+                          <td className="py-3.5 px-4 font-mono text-[11px] text-zinc-500">
                             {new Date(don.created_at).toLocaleString('id-ID')}
                           </td>
                           <td className="py-3.5 px-4">
                             {don.status === 'CLAIMED' ? (
-                              <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black uppercase ${
-                                  isNeo
-                                    ? 'bg-[#4EFE82] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                                    : 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
-                                }`}
-                              >
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/25">
                                 <CheckCircle2 className="w-3 h-3 stroke-[2.5]" />
                                 SUDAH MASUK QUEUE
                               </span>
                             ) : (
-                              <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black uppercase ${
-                                  isNeo
-                                    ? 'bg-[#FFFDE8] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                                    : 'bg-amber-950/60 text-amber-400 border border-amber-500/30'
-                                }`}
-                              >
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/25">
                                 <Clock className="w-3 h-3" />
                                 BELUM DIKLAIM
                               </span>
@@ -1681,34 +1440,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'overlay' && (
           <div className="p-6 space-y-6">
             <div>
-              <h2 className="text-2xl font-black uppercase tracking-tight">
+              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white">
                 Pengaturan & Link OBS Overlay
               </h2>
-              <p className={`text-xs font-bold mt-0.5 ${isNeo ? 'text-zinc-700' : 'text-zinc-400'}`}>
+              <p className="text-xs text-zinc-400 font-normal mt-0.5">
                 Copy link Browser Source di bawah ini dan tempelkan langsung ke OBS Studio.
               </p>
             </div>
 
-            {/* OBS BROWSER SOURCE CARD */}
-            <div
-              className={`p-6 rounded-2xl space-y-4 ${
-                isNeo
-                  ? 'bg-[#FFE600] border-[3px] border-black shadow-[6px_6px_0px_0px_#000] text-black'
-                  : 'bg-zinc-900 border border-red-500/30 shadow-2xl text-zinc-100'
-              }`}
-            >
+            {/* OBS BROWSER SOURCE CARD - APPLE MINIMAL FROSTED */}
+            <div className="apple-glass rounded-3xl border border-white/[0.1] shadow-2xl text-white p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="font-black text-xs uppercase tracking-wider flex items-center gap-2">
-                  <Tv className="w-4 h-4 stroke-[2.5]" />
-                  OBS BROWSER SOURCE URL
+                <span className="font-semibold text-xs tracking-tight uppercase flex items-center gap-2 text-white">
+                  <Tv className="w-4 h-4 text-[#2997ff]" />
+                  OBS Browser Source URL
                 </span>
-                <span
-                  className={`text-xs font-mono font-black px-2 py-0.5 rounded ${
-                    isNeo
-                      ? 'bg-white text-black border border-black shadow-[1.5px_1.5px_0px_0px_#000]'
-                      : 'bg-zinc-800 text-zinc-300'
-                  }`}
-                >
+                <span className="text-xs font-mono font-medium px-3 py-1 rounded-full bg-white/[0.08] text-zinc-300 border border-white/[0.1]">
                   Token: {settings?.streamer_token}
                 </span>
               </div>
@@ -1719,116 +1466,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="text"
                   readOnly
                   value={overlayUrl}
-                  className={`flex-1 px-4 py-3 rounded-xl font-mono font-bold text-xs select-all focus:outline-none ${
-                    isNeo
-                      ? 'bg-white border-[2.5px] border-black text-black shadow-[3px_3px_0px_0px_#000]'
-                      : 'bg-black/60 border border-zinc-700 text-cyan-300'
-                  }`}
+                  className="apple-input text-xs flex-1 select-all"
                 />
                 <button
                   onClick={() => copyToClipboard(overlayUrl, 'overlay')}
-                  className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border-[2.5px] border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none'
-                      : 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-950/60'
-                  }`}
+                  className="apple-button-primary py-3 px-6 rounded-full text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {copiedLink ? (
-                    <Check className="w-4 h-4 stroke-[3]" />
+                    <Check className="w-3.5 h-3.5 text-[#30d158]" />
                   ) : (
-                    <Copy className="w-4 h-4 stroke-[2.5]" />
+                    <Copy className="w-3.5 h-3.5" />
                   )}
-                  <span>{copiedLink ? 'LINK TERSALIN!' : 'COPY LINK'}</span>
+                  <span>{copiedLink ? 'Link Tersalin!' : 'Copy Link OBS'}</span>
                 </button>
                 <a
                   href={overlayUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`px-5 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-white hover:bg-zinc-100 text-black border-[2.5px] border-black shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none'
-                      : 'bg-zinc-800 hover:bg-zinc-750 text-white'
-                  }`}
+                  className="apple-button-secondary py-3 px-5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span>OPEN PREVIEW</span>
-                  <ExternalLink className="w-4 h-4 stroke-[2.5]" />
+                  <span>Open Preview</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
 
               {/* Quick OBS Setup Guide */}
-              <div
-                className={`pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs ${
-                  isNeo ? 'border-t-2 border-black text-black' : 'border-t border-zinc-800 text-zinc-400'
-                }`}
-              >
-                <div
-                  className={`p-3 rounded-xl ${
-                    isNeo
-                      ? 'bg-white border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                      : 'bg-black/30 border border-zinc-800'
-                  }`}
-                >
-                  <span className="font-black block mb-0.5">1. Tambah Browser</span>
-                  <span className="font-bold">Di OBS Studio, klik + pada Sources lalu pilih "Browser".</span>
+              <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs border-t border-white/[0.08] text-zinc-400">
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
+                  <span className="font-semibold block mb-0.5 text-white">1. Tambah Browser</span>
+                  <span className="font-normal text-zinc-400">Di OBS Studio, klik + pada Sources lalu pilih Browser.</span>
                 </div>
-                <div
-                  className={`p-3 rounded-xl ${
-                    isNeo
-                      ? 'bg-white border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                      : 'bg-black/30 border border-zinc-800'
-                  }`}
-                >
-                  <span className="font-black block mb-0.5">2. Atur Resolusi</span>
-                  <span className="font-bold">Set Width: 450, Height: 650.</span>
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
+                  <span className="font-semibold block mb-0.5 text-white">2. Atur Resolusi</span>
+                  <span className="font-normal text-zinc-400">Set Width: 450, Height: 650 (Auto-height dinamis).</span>
                 </div>
-                <div
-                  className={`p-3 rounded-xl ${
-                    isNeo
-                      ? 'bg-white border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                      : 'bg-black/30 border border-zinc-800'
-                  }`}
-                >
-                  <span className="font-black block mb-0.5">3. Transparansi OBS</span>
-                  <span className="font-bold">Latar luar transparan, langsung menempel di stream gameplay.</span>
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
+                  <span className="font-semibold block mb-0.5 text-white">3. Transparansi</span>
+                  <span className="font-normal text-zinc-400">Background transparan otomatis menyatu dengan stream.</span>
                 </div>
               </div>
             </div>
 
             {/* LIVE OVERLAY PREVIEW */}
-            <div
-              className={`rounded-2xl p-6 space-y-4 ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800'
-              }`}
-            >
+            <div className="apple-card rounded-3xl p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-black text-base uppercase tracking-wider">
+                  <h3 className="font-semibold text-base tracking-tight text-white">
                     Interactive Live Overlay Preview
                   </h3>
-                  <p className={`text-xs font-bold ${isNeo ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                  <p className="text-xs text-zinc-400 font-normal mt-0.5">
                     Tampilan persis seperti yang akan tampil di live stream OBS Anda.
                   </p>
                 </div>
                 <button
                   onClick={() => setActiveTab('settings')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-[#FFE600] hover:bg-[#FFD700] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000]'
-                      : 'bg-zinc-800 hover:bg-zinc-750 text-zinc-300'
-                  }`}
+                  className="apple-button-secondary px-4 py-2 rounded-full text-xs font-medium transition-all cursor-pointer"
                 >
                   Ubah Tampilan & Judul
                 </button>
               </div>
 
               {/* Preview Window Frame */}
-              <div
-                className={`w-full bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:16px_16px] bg-zinc-950/80 rounded-2xl p-6 flex justify-center min-h-[460px] overflow-hidden ${
-                  isNeo ? 'border-[3px] border-black shadow-[inset_0_4px_10px_rgba(0,0,0,0.5)]' : 'border border-zinc-800'
-                }`}
-              >
+              <div className="w-full bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:16px_16px] bg-zinc-950/80 rounded-2xl p-6 flex justify-center min-h-[460px] overflow-hidden border border-white/[0.08]">
                 <div className="w-full max-w-[440px]">
                   <OverlayView
                     previewSettings={settings || undefined}
@@ -1841,153 +1540,450 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 5: PENGATURAN (SETTINGS) */}
+        {/* TAB 5: SOCIABUZZ WEBHOOK & DIAGNOSTIC LOGS */}
+        {activeTab === 'sociabuzz' && (
+          <div className="p-6 space-y-6 max-w-5xl">
+            {/* Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white flex items-center gap-2.5">
+                  <Zap className="w-5 h-5 text-[#ffd60a]" />
+                  <span>Integrasi Sociabuzz Webhook</span>
+                </h2>
+                <p className="text-xs text-zinc-400 font-normal mt-0.5">
+                  Terima notifikasi donasi mabar dan masukkan pemain ke antrian OBS secara otomatis tanpa reload.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSimModal(true)}
+                className="apple-button-primary px-4 py-2 rounded-full text-xs font-medium flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-[#ffd60a]" />
+                <span>Test Notifikasi (Simulator)</span>
+              </button>
+            </div>
+
+            {/* 4 Metric Status Cards (Section 11) */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Webhook Status */}
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-1">
+                  <span>Status Webhook</span>
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      webhookEvents.length > 0
+                        ? 'bg-[#30d158] shadow-[0_0_8px_#30d158]'
+                        : 'bg-[#ffd60a] animate-pulse'
+                    }`}
+                  />
+                </div>
+                <div className="text-xl font-semibold tracking-tight text-white mt-1">
+                  {webhookEvents.length > 0 ? '🟢 Connected' : '🟡 Menunggu Event'}
+                </div>
+                <div className="text-[11px] text-zinc-500 font-normal mt-1">
+                  {webhookEvents.length > 0 ? 'Siap menerima donasi' : 'Belum ada notifikasi'}
+                </div>
+              </div>
+
+              {/* Events Received */}
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-1">
+                  <span>Events Received</span>
+                  <Code className="w-4 h-4 text-[#2997ff]" />
+                </div>
+                <div className="text-3xl font-semibold tracking-tight text-white mt-1">{webhookEvents.length}</div>
+                <div className="text-[11px] text-zinc-500 font-normal mt-1">
+                  Total payload tercatat
+                </div>
+              </div>
+
+              {/* Last Event Time */}
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-1">
+                  <span>Event Terakhir</span>
+                  <Clock className="w-4 h-4 text-purple-400" />
+                </div>
+                <div className="text-base sm:text-lg font-semibold tracking-tight text-white mt-1 truncate">
+                  {webhookEvents.length > 0
+                    ? new Date(webhookEvents[0].created_at).toLocaleTimeString('id-ID', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : 'Belum Ada'}
+                </div>
+                <div className="text-[11px] text-zinc-500 font-normal mt-1 truncate">
+                  {webhookEvents.length > 0
+                    ? new Date(webhookEvents[0].created_at).toLocaleDateString('id-ID')
+                    : 'Menunggu koneksi'}
+                </div>
+              </div>
+
+              {/* Queue Auto-Created */}
+              <div className="apple-card p-5 rounded-3xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 mb-1">
+                  <span>Auto-Queue Masuk</span>
+                  <ShieldCheck className="w-4 h-4 text-[#30d158]" />
+                </div>
+                <div className="text-3xl font-semibold tracking-tight text-white mt-1">
+                  {donations.filter((d) => d.claimed_by_player_id).length}
+                </div>
+                <div className="text-[11px] text-zinc-500 font-normal mt-1">
+                  Player langsung antri
+                </div>
+              </div>
+            </div>
+
+            {/* Webhook Credentials & Configuration Box (Section 10) */}
+            <div className="apple-card p-6 rounded-3xl space-y-5">
+              <div className="flex items-center justify-between border-b pb-3 border-white/[0.08]">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#2997ff]/15 text-[#2997ff] border border-[#2997ff]/25">
+                    Integrasi Webhook
+                  </span>
+                  <h3 className="font-semibold text-xs tracking-tight text-white">
+                    Kredensial Webhook Streamer Anda
+                  </h3>
+                </div>
+                <span className="text-xs text-zinc-500 font-mono">
+                  ID: {settings?.user_id || 'streamer'}
+                </span>
+              </div>
+
+              {/* Webhook URL Input */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-zinc-300">
+                  Webhook URL (Pasang di Akun Sociabuzz)
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={webhookUrl}
+                    className="apple-input text-xs font-mono text-cyan-400 flex-1 select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(webhookUrl, 'webhook-url')}
+                    className="apple-button-primary px-5 py-2.5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    {copiedWebhookUrl ? (
+                      <Check className="w-3.5 h-3.5 text-[#30d158]" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>{copiedWebhookUrl ? 'URL Tersalin!' : 'Copy Webhook URL'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-zinc-500 font-normal">
+                  URL ini unik untuk akun streamer Anda, sehingga donasi penonton Anda tidak akan pernah bercampur dengan streamer lain.
+                </p>
+              </div>
+
+              {/* Webhook Token / Secret Input */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-zinc-300">
+                  Webhook Token / Signature Secret
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showWebhookSecret ? 'text' : 'password'}
+                      readOnly
+                      value={webhookSecret}
+                      className="apple-input text-xs font-mono text-amber-300 w-full pr-10 select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWebhookSecret(!showWebhookSecret)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white cursor-pointer"
+                      title={showWebhookSecret ? 'Sembunyikan' : 'Tampilkan'}
+                    >
+                      {showWebhookSecret ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(webhookSecret, 'webhook-secret')}
+                    className="apple-button-secondary px-5 py-2.5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    {copiedWebhookSecret ? (
+                      <Check className="w-3.5 h-3.5 text-[#30d158]" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>{copiedWebhookSecret ? 'Token Tersalin!' : 'Copy Webhook Token'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step by Step Instructions Accordion/Box */}
+              <div className="p-4 rounded-2xl text-xs space-y-2 bg-white/[0.02] border border-white/[0.06] text-zinc-300 font-normal">
+                <div className="font-semibold text-[11px] text-zinc-400 uppercase tracking-wider">
+                  Langkah Setting di Dashboard Sociabuzz:
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-zinc-400">
+                  <li>
+                    Login ke akun Sociabuzz Anda di <a href="https://sociabuzz.com" target="_blank" rel="noopener noreferrer" className="text-[#2997ff] hover:underline font-medium">sociabuzz.com</a>
+                  </li>
+                  <li>Buka menu <strong className="text-white">Settings</strong> → <strong className="text-white">Integrations</strong> → <strong className="text-white">Webhook</strong></li>
+                  <li>Centang pilihan <strong className="text-white">Aktifkan Integrasi Webhook</strong></li>
+                  <li>Tempelkan <strong className="text-white">Webhook URL</strong> di atas ke kolom yang disediakan</li>
+                  <li>Tempelkan <strong className="text-white">Webhook Token</strong> di atas ke kolom token</li>
+                  <li>Klik <strong className="text-white">Simpan</strong>, lalu klik tombol <strong className="text-white">Test Notifikasi</strong> untuk memverifikasi</li>
+                </ol>
+              </div>
+            </div>
+
+            {/* Diagnostic Webhook Logs Table (Section 11) */}
+            <div className="apple-glass rounded-3xl border border-white/[0.08] shadow-2xl overflow-hidden">
+              <div className="p-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] bg-white/[0.02]">
+                <div>
+                  <h3 className="font-semibold text-sm tracking-tight text-white flex items-center gap-2">
+                    <Code className="w-4 h-4 text-[#2997ff]" />
+                    <span>Diagnostic Webhook Logs</span>
+                  </h3>
+                  <p className="text-[11px] text-zinc-400 font-normal mt-0.5">
+                    Data payload mentah yang diterima dari Sociabuzz saat penonton melakukan donasi atau Test Notifikasi.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={fetchDashboard}
+                    className="apple-button-secondary px-3.5 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Refresh Logs</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="uppercase tracking-wider font-medium text-[11px] bg-white/[0.02] text-zinc-400 border-b border-white/[0.08]">
+                    <tr>
+                      <th className="py-3.5 px-4">Event ID</th>
+                      <th className="py-3.5 px-4">Waktu</th>
+                      <th className="py-3.5 px-4">Donor & Nominal</th>
+                      <th className="py-3.5 px-4">ID Game Terdeteksi</th>
+                      <th className="py-3.5 px-4">Status Pemrosesan</th>
+                      <th className="py-3.5 px-4 text-center">Diagnostic Payload</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04] text-zinc-300">
+                    {webhookEvents.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center">
+                          <div className="max-w-md mx-auto space-y-2">
+                            <Code className="w-8 h-8 mx-auto text-zinc-500 stroke-[1.5]" />
+                            <div className="font-semibold text-sm text-white">Belum Ada Webhook Logs</div>
+                            <p className="text-xs text-zinc-500 font-normal">
+                              Klik tombol "Test Notifikasi (Simulator)" di atas untuk mencoba mengirim payload simulasi dan melihat diagnostik data di sini.
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      webhookEvents.map((ev) => {
+                        const rawBody = (ev.payload?.body as Record<string, unknown>) || {};
+                        const extracted = (ev.payload?.extracted as Record<string, unknown>) || {};
+                        const donor = String(extracted.donor_name || rawBody.donor_name || rawBody.donor || 'Anonim');
+                        const amount = Number(extracted.amount || rawBody.amount || rawBody.nominal || 0);
+                        const gameId = String(
+                          rawBody.queue_input || rawBody.game_id || rawBody.id_game || rawBody.player_id || '-'
+                        );
+
+                        return (
+                          <tr
+                            key={ev.id}
+                            className="hover:bg-white/[0.03] transition-colors"
+                          >
+                            <td className="py-3.5 px-4 font-mono text-xs text-zinc-300">{ev.external_event_id}</td>
+                            <td className="py-3.5 px-4 font-mono text-[11px] text-zinc-500">
+                              {new Date(ev.created_at).toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="font-semibold text-white">{donor}</div>
+                              {amount > 0 && (
+                                <div className="text-[11px] font-mono text-amber-400 font-medium">
+                                  Rp {amount.toLocaleString('id-ID')}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 font-mono">
+                              {gameId !== '-' ? (
+                                <span className="px-2 py-0.5 rounded-full bg-[#2997ff]/10 text-[#2997ff] border border-[#2997ff]/20 text-xs">
+                                  {gameId}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-500 italic text-[11px]">Tidak ada ID Game</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {ev.error ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#ff453a]/15 text-[#ff453a] border border-[#ff453a]/25">
+                                  {ev.error.includes('Duplicate') ? 'DUPLICATE SKIPPED' : 'ERROR'}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/25">
+                                  <CheckCircle2 className="w-3 h-3 stroke-[2.5]" />
+                                  PROCESSED
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedWebhookLog(ev)}
+                                className="apple-button-secondary px-3 py-1 rounded-full text-[11px] font-medium transition-all cursor-pointer"
+                              >
+                                Lihat Raw Payload
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Diagnostic Payload Inspector Modal */}
+            {selectedWebhookLog && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="apple-glass border border-white/[0.14] text-white shadow-2xl rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden relative backdrop-blur-2xl">
+                  <div className="p-4 flex items-center justify-between border-b border-white/[0.08] bg-white/[0.02]">
+                    <div className="flex items-center gap-2">
+                      <Code className="w-5 h-5 text-[#2997ff]" />
+                      <h3 className="font-semibold text-sm tracking-tight text-white">
+                        Diagnostic Payload: {selectedWebhookLog.external_event_id}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWebhookLog(null)}
+                      className="w-8 h-8 rounded-full bg-white/[0.08] hover:bg-white/[0.16] text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="p-5 overflow-y-auto space-y-4 text-xs font-mono">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
+                      <span className="text-zinc-500 font-sans font-medium">Event Timestamp:</span>
+                      <span className="text-zinc-300">{new Date(selectedWebhookLog.created_at).toISOString()}</span>
+                    </div>
+
+                    <div>
+                      <div className="font-sans font-medium text-xs text-zinc-400 mb-2">
+                        JSON Payload Mentah dari Sociabuzz:
+                      </div>
+                      <pre className="p-4 rounded-2xl text-[11px] leading-relaxed overflow-x-auto bg-black/70 text-cyan-300 border border-white/[0.08]">
+                        {JSON.stringify(selectedWebhookLog.payload, null, 2)}
+                      </pre>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(selectedWebhookLog.payload, null, 2));
+                          showNotification('Raw JSON tersalin ke clipboard!', 'success');
+                        }}
+                        className="apple-button-secondary px-4 py-2 rounded-full text-xs font-medium cursor-pointer"
+                      >
+                        Copy Raw JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedWebhookLog(null)}
+                        className="apple-button-primary px-4 py-2 rounded-full text-xs font-medium cursor-pointer"
+                      >
+                        Tutup
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 6: PENGATURAN (SETTINGS) */}
         {activeTab === 'settings' && (
           <div className="p-6 space-y-6 max-w-4xl">
             <div>
-              <h2 className="text-2xl font-black uppercase tracking-tight">
+              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white">
                 Pengaturan Sistem & Tampilan
               </h2>
-              <p className={`text-xs font-bold mt-0.5 ${isNeo ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                Sesuaikan gaya UI dashboard, link Sociabuzz, batas donasi, judul custom, dan PIN.
+              <p className="text-xs text-zinc-400 font-normal mt-0.5">
+                Sesuaikan gaya UI dashboard, link Sociabuzz, batas donasi, judul custom, dan PIN keamanan.
               </p>
             </div>
 
             {settingsSuccess && (
-              <div
-                className={`p-4 rounded-xl text-xs font-black flex items-center gap-2 ${
-                  isNeo
-                    ? 'bg-[#4EFE82] border-2 border-black text-black shadow-[3px_3px_0px_0px_#000]'
-                    : 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300'
-                }`}
-              >
-                <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+              <div className="p-4 rounded-2xl text-xs font-medium flex items-center gap-2 bg-[#30d158]/15 border border-[#30d158]/25 text-[#30d158]">
+                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
                 <span>{settingsSuccess}</span>
               </div>
             )}
 
-            {/* DEDICATED SECTION: 2 OPTIONS UI DASHBOARD STYLE */}
-            <div
-              className={`p-6 rounded-2xl space-y-4 ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800 shadow-xl'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`p-1.5 rounded-lg ${
-                      isNeo ? 'bg-[#FFE600] border-2 border-black text-black' : 'bg-red-500/20 text-red-400'
-                    }`}
-                  >
-                    <Palette className="w-5 h-5 stroke-[2.5]" />
+            {/* Theme Aesthetic Showcase: Apple Minimal Dark */}
+            <div className="apple-card p-6 rounded-3xl space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-2xl bg-white/[0.08] text-white border border-white/[0.1]">
+                    <Palette className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-black text-base uppercase tracking-wider">
-                      Pilihan Gaya UI Dashboard
+                    <h3 className="font-semibold text-sm tracking-tight text-white">
+                      Tema UI: Apple Minimal Dark (Aktif)
                     </h3>
-                    <p className={`text-xs font-bold ${isNeo ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                      Pilih antara gaya Neobrutalism (cerah & pop) atau Obsidian Dark (gaming gelap).
+                    <p className="text-xs text-zinc-400 font-normal mt-0.5">
+                      Obsidian deep canvas, frosted glassmorphism, hairline borders, dan aksen Apple SF Pro.
                     </p>
                   </div>
                 </div>
+                <span className="px-3 py-1 rounded-full text-[10px] font-semibold bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/25">
+                  ✓ Cupertino Glass Active
+                </span>
               </div>
 
-              {/* 2 Big Selectable Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                {/* Opsi 1: Neobrutalism */}
-                <button
-                  type="button"
-                  onClick={() => handleToggleUiTheme('neobrutalism')}
-                  className={`p-4 rounded-2xl text-left transition-all cursor-pointer border-[3px] border-black relative overflow-hidden ${
-                    uiTheme === 'neobrutalism'
-                      ? 'bg-[#FFFDE8] shadow-[5px_5px_0px_0px_#000] ring-2 ring-black'
-                      : 'bg-white shadow-[2px_2px_0px_0px_#000] opacity-75 hover:opacity-100 hover:shadow-[4px_4px_0px_0px_#000]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2.5 py-1 rounded-md text-xs font-black uppercase bg-[#FFE600] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]">
-                      🎨 Opsi 1: Neobrutalism Pop
-                    </span>
-                    {uiTheme === 'neobrutalism' && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-[#4EFE82] text-black border border-black">
-                        ✓ AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-black text-black">
-                    Border tebal 3px, hard shadow tanpa blur, blok warna flat pop (#FFE600, #00E5FF, #4EFE82).
-                  </p>
-                  <div className="mt-3 flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded bg-[#FFE600] border border-black" />
-                    <span className="w-4 h-4 rounded bg-[#00E5FF] border border-black" />
-                    <span className="w-4 h-4 rounded bg-[#4EFE82] border border-black" />
-                    <span className="w-4 h-4 rounded bg-[#FF5B89] border border-black" />
-                    <span className="text-[10px] font-black text-zinc-600 ml-1">Karakter Ceria & Kontras</span>
-                  </div>
-                </button>
-
-                {/* Opsi 2: Obsidian Dark */}
-                <button
-                  type="button"
-                  onClick={() => handleToggleUiTheme('dark')}
-                  className={`p-4 rounded-2xl text-left transition-all cursor-pointer relative overflow-hidden ${
-                    uiTheme === 'dark'
-                      ? 'bg-zinc-900 text-white border-2 border-red-500 shadow-xl ring-2 ring-red-500/50'
-                      : isNeo
-                      ? 'bg-zinc-900 text-white border-2 border-black shadow-[2px_2px_0px_0px_#000] opacity-75 hover:opacity-100'
-                      : 'bg-zinc-900 text-white border border-zinc-700 opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2.5 py-1 rounded-md text-xs font-black uppercase bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm">
-                      🌙 Opsi 2: Obsidian Dark
-                    </span>
-                    {uiTheme === 'dark' && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-red-600 text-white">
-                        ✓ AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-medium text-zinc-300">
-                    Nuansa hitam charcoal, aksen merah/cyan gaming, border halus, minim kelelahan mata saat live streaming malam hari.
-                  </p>
-                  <div className="mt-3 flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded bg-[#18181b] border border-zinc-700" />
-                    <span className="w-4 h-4 rounded bg-red-600 border border-zinc-700" />
-                    <span className="w-4 h-4 rounded bg-amber-400 border border-zinc-700" />
-                    <span className="w-4 h-4 rounded bg-cyan-400 border border-zinc-700" />
-                    <span className="text-[10px] font-bold text-zinc-400 ml-1">Karakter Esports Gelap</span>
-                  </div>
-                </button>
+              <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                <span className="text-[11px] font-medium">Palette Sistem Apple SF Pro:</span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#2997ff]" /><span className="text-[11px] text-zinc-300">Blue</span></span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#30d158]" /><span className="text-[11px] text-zinc-300">Green</span></span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#ffd60a]" /><span className="text-[11px] text-zinc-300">Amber</span></span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#ff453a]" /><span className="text-[11px] text-zinc-300">Red</span></span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#bf5af2]" /><span className="text-[11px] text-zinc-300">Purple</span></span>
+                </div>
               </div>
             </div>
 
             <form onSubmit={handleSaveSettings} className="space-y-6">
               {/* Sociabuzz & Donasi Section */}
-              <div
-                className={`p-6 rounded-2xl space-y-4 ${
-                  isNeo
-                    ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                    : 'bg-zinc-900 border border-zinc-800 shadow-xl'
-                }`}
-              >
+              <div className="apple-card p-6 rounded-3xl space-y-4">
                 <div className="flex items-center gap-2">
-                  <div
-                    className={`p-1.5 rounded-lg ${
-                      isNeo ? 'bg-[#FFE600] border-2 border-black text-black' : 'bg-amber-400/20 text-amber-400'
-                    }`}
-                  >
-                    <Coins className="w-5 h-5 stroke-[2.5]" />
+                  <div className="p-1.5 rounded-2xl bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30">
+                    <Coins className="w-4 h-4" />
                   </div>
-                  <h3 className="font-black text-base uppercase tracking-wider">
+                  <h3 className="font-semibold text-sm tracking-tight text-white">
                     Pengaturan Integrasi Sociabuzz
                   </h3>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-medium text-zinc-300 mb-1.5">
                     Link Donasi Sociabuzz Anda
                   </label>
                   <input
@@ -1998,20 +1994,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setSettingsForm({ ...settingsForm, sociabuzz_url: e.target.value })
                     }
                     placeholder="https://sociabuzz.com/prostreamer"
-                    className={`w-full px-4 py-2.5 rounded-xl text-xs font-mono font-bold focus:outline-none ${
-                      isNeo
-                        ? 'bg-white border-2 border-black text-black shadow-[3px_3px_0px_0px_#000] focus:bg-[#FFFDE8]'
-                        : 'bg-zinc-800 border border-zinc-700 text-white focus:border-amber-400'
-                    }`}
+                    className="apple-input text-xs font-mono w-full"
                   />
-                  <span className={`text-[11px] font-bold mt-1 block ${isNeo ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                  <span className="text-[11px] text-zinc-500 font-normal mt-1 block">
                     Link ini yang ditampilkan ke viewer dan tombol donasi cepat.
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">
                       Min Donasi Regular
                     </label>
                     <input
@@ -2021,16 +2013,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onChange={(e) =>
                         setSettingsForm({ ...settingsForm, min_donation: Number(e.target.value) })
                       }
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs font-mono w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1 text-[#A259FF]">
+                    <label className="block text-xs font-medium text-[#bf5af2] mb-1">
                       Min Donasi VIP
                     </label>
                     <input
@@ -2043,16 +2031,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           vip_min_donation: Number(e.target.value),
                         })
                       }
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs font-mono w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1 text-amber-600">
+                    <label className="block text-xs font-medium text-[#ffd60a] mb-1">
                       Min Donasi VVIP
                     </label>
                     <input
@@ -2065,11 +2049,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           vvip_min_donation: Number(e.target.value),
                         })
                       }
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs font-mono w-full"
                     />
                   </div>
                 </div>
@@ -2082,11 +2062,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) =>
                       setSettingsForm({ ...settingsForm, allow_free_queue: e.target.checked })
                     }
-                    className="w-5 h-5 rounded cursor-pointer accent-black"
+                    className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                   />
                   <label
                     htmlFor="free_queue"
-                    className="text-xs font-black uppercase tracking-wider cursor-pointer"
+                    className="text-xs font-normal text-zinc-300 cursor-pointer"
                   >
                     Izinkan antrian gratis (tanpa kode donasi Sociabuzz)
                   </label>
@@ -2094,22 +2074,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Overlay Appearance Section */}
-              <div
-                className={`p-6 rounded-2xl space-y-4 ${
-                  isNeo
-                    ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                    : 'bg-zinc-900 border border-zinc-800 shadow-xl'
-                }`}
-              >
+              <div className="apple-card p-6 rounded-3xl space-y-4">
                 <div className="flex items-center gap-2">
-                  <div
-                    className={`p-1.5 rounded-lg ${
-                      isNeo ? 'bg-[#00E5FF] border-2 border-black text-black' : 'bg-cyan-500/20 text-cyan-400'
-                    }`}
-                  >
-                    <Tv className="w-5 h-5 stroke-[2.5]" />
+                  <div className="p-1.5 rounded-2xl bg-[#2997ff]/20 text-[#2997ff] border border-[#2997ff]/30">
+                    <Tv className="w-4 h-4" />
                   </div>
-                  <h3 className="font-black text-base uppercase tracking-wider">
+                  <h3 className="font-semibold text-sm tracking-tight text-white">
                     Kustomisasi Judul & Tampilan Overlay OBS
                   </h3>
                 </div>
@@ -2118,14 +2088,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* Custom Title Input */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-black uppercase tracking-wider">
+                      <label className="block text-xs font-medium text-zinc-300">
                         Judul Overlay (Tulis Sendiri / Bebas)
                       </label>
-                      <span
-                        className={`text-[10px] font-black px-2 py-0.5 rounded ${
-                          isNeo ? 'bg-[#FFE600] text-black border border-black' : 'text-cyan-400'
-                        }`}
-                      >
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] text-[#2997ff] border border-white/[0.08]">
                         Atas Tengah
                       </span>
                     </div>
@@ -2134,32 +2100,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       value={settingsForm.title || ''}
                       onChange={(e) => setSettingsForm({ ...settingsForm, title: e.target.value })}
                       placeholder="Contoh: ANTRIAN BY1"
-                      className={`w-full px-4 py-2.5 rounded-xl text-xs font-black focus:outline-none ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[3px_3px_0px_0px_#000] focus:bg-[#FFFDE8]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white focus:border-red-500'
-                      }`}
+                      className="apple-input text-xs w-full"
                     />
                     {/* Presets */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                      <span className={`text-[10px] font-black mr-1 ${isNeo ? 'text-zinc-600' : 'text-zinc-500'}`}>
-                        Preset Cepat:
+                      <span className="text-[10px] text-zinc-500 mr-1">
+                        Preset:
                       </span>
                       {['ANTRIAN BY1', 'ANTRIAN 1V1', 'ROOM BY 1', 'LIVE DUEL BY1'].map((preset) => (
                         <button
                           key={preset}
                           type="button"
                           onClick={() => setSettingsForm({ ...settingsForm, title: preset })}
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-black transition-all cursor-pointer ${
-                            isNeo
-                              ? `border-2 border-black ${
-                                  settingsForm.title === preset
-                                    ? 'bg-[#FFE600] text-black shadow-[2px_2px_0px_0px_#000]'
-                                    : 'bg-zinc-100 text-black hover:bg-zinc-200'
-                                }`
-                              : settingsForm.title === preset
-                              ? 'bg-red-600 text-white'
-                              : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                          className={`px-2.5 py-1 rounded-full text-[10px] transition-all cursor-pointer ${
+                            settingsForm.title === preset
+                              ? 'bg-white text-black font-semibold shadow-sm'
+                              : 'apple-button-secondary text-zinc-400'
                           }`}
                         >
                           {preset}
@@ -2170,7 +2126,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   {/* Theme Selector */}
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-medium text-zinc-300 mb-1.5">
                       Tema Visual Kartu Overlay
                     </label>
                     <select
@@ -2181,11 +2137,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           theme: e.target.value as OverlaySettings['theme'],
                         })
                       }
-                      className={`w-full px-4 py-2.5 rounded-xl text-xs font-black focus:outline-none ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[3px_3px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
                       <option value="obsidian">React Bits Dark (Signature Style)</option>
                       <option value="cyber">Cyberpunk React Bits</option>
@@ -2199,7 +2151,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-medium text-zinc-300 mb-1.5">
                       Ukuran Font
                     </label>
                     <select
@@ -2210,11 +2162,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           font_size: e.target.value as OverlaySettings['font_size'],
                         })
                       }
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
                       <option value="small">Kecil (Compact)</option>
                       <option value="medium">Sedang (Standard 1080p)</option>
@@ -2223,7 +2171,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-medium text-zinc-300 mb-1.5">
                       Ukuran Card
                     </label>
                     <select
@@ -2234,11 +2182,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           card_size: e.target.value as OverlaySettings['card_size'],
                         })
                       }
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
                       <option value="compact">Rapat (Compact)</option>
                       <option value="normal">Normal</option>
@@ -2247,7 +2191,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-medium text-zinc-300 mb-1.5">
                       Maksimal Player Tampil di Overlay
                     </label>
                     <input
@@ -2261,26 +2205,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           max_visible_players: Number(e.target.value),
                         })
                       }
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold ${
-                        isNeo
-                          ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-zinc-800 border border-zinc-700 text-white'
-                      }`}
+                      className="apple-input text-xs font-mono w-full"
                     />
                   </div>
                 </div>
 
                 {/* Opacity Slider */}
                 <div>
-                  <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider mb-1.5">
+                  <div className="flex items-center justify-between text-xs font-medium text-zinc-300 mb-1.5">
                     <span>Transparansi Background Overlay</span>
-                    <span
-                      className={`font-mono px-2 py-0.5 rounded ${
-                        isNeo
-                          ? 'bg-[#FFE600] text-black border border-black'
-                          : 'text-cyan-400 bg-zinc-800'
-                      }`}
-                    >
+                    <span className="font-mono px-2 py-0.5 rounded-full bg-white/[0.08] text-[#2997ff]">
                       {settingsForm.opacity ?? 96}%
                     </span>
                   </div>
@@ -2292,9 +2226,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) =>
                       setSettingsForm({ ...settingsForm, opacity: Number(e.target.value) })
                     }
-                    className="w-full accent-black cursor-pointer"
+                    className="w-full accent-white cursor-pointer"
                   />
-                  <div className={`flex justify-between text-[10px] font-bold mt-1 ${isNeo ? 'text-zinc-600' : 'text-zinc-500'}`}>
+                  <div className="flex justify-between text-[10px] text-zinc-500 font-normal mt-1">
                     <span>Sedikit Transparan (70%)</span>
                     <span>Solid Gelap Rekomendasi (96% - 100%)</span>
                   </div>
@@ -2302,15 +2236,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 {/* Spacing Slider */}
                 <div>
-                  <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider mb-1.5">
+                  <div className="flex items-center justify-between text-xs font-medium text-zinc-300 mb-1.5">
                     <span>Jarak Spacing Antar Card (px)</span>
-                    <span
-                      className={`font-mono px-2 py-0.5 rounded ${
-                        isNeo
-                          ? 'bg-[#00E5FF] text-black border border-black'
-                          : 'text-cyan-400 bg-zinc-800'
-                      }`}
-                    >
+                    <span className="font-mono px-2 py-0.5 rounded-full bg-white/[0.08] text-[#30d158]">
                       {settingsForm.spacing ?? 8}px
                     </span>
                   </div>
@@ -2322,7 +2250,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) =>
                       setSettingsForm({ ...settingsForm, spacing: Number(e.target.value) })
                     }
-                    className="w-full accent-black cursor-pointer"
+                    className="w-full accent-white cursor-pointer"
                   />
                 </div>
 
@@ -2335,38 +2263,165 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) =>
                       setSettingsForm({ ...settingsForm, sound_alert: e.target.checked })
                     }
-                    className="w-5 h-5 rounded cursor-pointer accent-black"
+                    className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                   />
                   <label
                     htmlFor="sound_alert"
-                    className="text-xs font-black uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
+                    className="text-xs font-normal text-zinc-300 cursor-pointer flex items-center gap-1.5"
                   >
-                    <Volume2 className="w-4 h-4 stroke-[2.5]" />
+                    <Volume2 className="w-4 h-4 text-[#ffd60a]" />
                     <span>Nyalakan notifikasi audio otomatis saat giliran match berganti</span>
                   </label>
                 </div>
 
+                {/* Panel Width & Border Radius Sliders */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/[0.08]">
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-medium text-zinc-300 mb-1">
+                      <span>Lebar Panel Overlay (Width)</span>
+                      <span className="font-mono text-[#2997ff]">
+                        {settingsForm.panel_width ?? 440}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={340}
+                      max={600}
+                      value={settingsForm.panel_width ?? 440}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, panel_width: Number(e.target.value) })
+                      }
+                      className="w-full accent-white cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-medium text-zinc-300 mb-1">
+                      <span>Lengkungan Sudut (Border Radius)</span>
+                      <span className="font-mono text-[#2997ff]">
+                        {settingsForm.border_radius ?? 22}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={8}
+                      max={32}
+                      value={settingsForm.border_radius ?? 22}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, border_radius: Number(e.target.value) })
+                      }
+                      className="w-full accent-white cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Badge & Details Toggles (Section 16) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-white/[0.08]">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="show_id"
+                      checked={settingsForm.show_id !== false}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, show_id: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
+                    />
+                    <label htmlFor="show_id" className="text-xs font-normal text-zinc-300 cursor-pointer">
+                      Tampilkan ID Game
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="show_vip_badge"
+                      checked={settingsForm.show_vip_badge !== false}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, show_vip_badge: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
+                    />
+                    <label htmlFor="show_vip_badge" className="text-xs font-normal text-zinc-300 cursor-pointer">
+                      Tampilkan Badge VIP / VVIP
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="show_live_badge"
+                      checked={settingsForm.show_live_badge !== false}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, show_live_badge: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
+                    />
+                    <label htmlFor="show_live_badge" className="text-xs font-normal text-zinc-300 cursor-pointer">
+                      Tampilkan Indikator LIVE
+                    </label>
+                  </div>
+                </div>
+
+                {/* Animation Settings (Section 16) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/[0.08]">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="enable_animation"
+                      checked={settingsForm.enable_animation !== false}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, enable_animation: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
+                    />
+                    <label htmlFor="enable_animation" className="text-xs font-normal text-zinc-300 cursor-pointer">
+                      Aktifkan Animasi Transisi Card
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">
+                      Kecepatan Animasi
+                    </label>
+                    <select
+                      value={settingsForm.animation_speed || 'normal'}
+                      onChange={(e) =>
+                        setSettingsForm({
+                          ...settingsForm,
+                          animation_speed: e.target.value as 'slow' | 'normal' | 'fast',
+                        })
+                      }
+                      className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
+                    >
+                      <option value="slow">Lambat (Smooth Cinematic)</option>
+                      <option value="normal">Standar (Optimal OBS)</option>
+                      <option value="fast">Cepat (Snappy)</option>
+                    </select>
+                  </div>
+                </div>
+
                 {/* Hide currently playing player from queue overlay */}
-                <div className="flex items-start gap-3 pt-2 border-t border-zinc-200/50">
+                <div className="flex items-start gap-3 pt-2 border-t border-white/[0.08]">
                   <input
                     type="checkbox"
                     id="hide_playing_in_overlay"
-                    checked={settingsForm.hide_playing_in_overlay ?? true}
+                    checked={settingsForm.hide_playing_in_overlay || false}
                     onChange={(e) =>
                       setSettingsForm({ ...settingsForm, hide_playing_in_overlay: e.target.checked })
                     }
-                    className="w-5 h-5 rounded cursor-pointer accent-black mt-0.5"
+                    className="w-4 h-4 rounded cursor-pointer accent-[#2997ff] mt-0.5"
                   />
                   <div>
                     <label
                       htmlFor="hide_playing_in_overlay"
-                      className="text-xs font-black uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
+                      className="text-xs font-normal text-zinc-300 cursor-pointer flex items-center gap-1.5"
                     >
-                      <Users className="w-4 h-4 stroke-[2.5]" />
-                      <span>Sembunyikan player yang sedang main dari overlay (Hanya tampilkan antrian berikutnya)</span>
+                      <Users className="w-4 h-4 text-zinc-400" />
+                      <span>Sembunyikan player yang sedang main dari overlay (Hanya tampilkan antrian menunggu)</span>
                     </label>
-                    <p className={`text-[11px] font-bold mt-0.5 ${isNeo ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                      Contoh: Saat streamer sedang bertanding melawan Bara dan urutan selanjutnya Fianz, di overlay antrian hanya akan muncul Fianz (#1) dan pemain berikutnya.
+                    <p className="text-[11px] text-zinc-500 font-normal mt-0.5">
+                      Jika dimatikan (rekomendasi), pemain yang sedang bertanding akan tampil di posisi #1 dengan indikator 🔴 LIVE, diikuti pemain berikutnya di bawahnya.
                     </p>
                   </div>
                 </div>
@@ -2375,58 +2430,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="submit"
                 disabled={savingSettings}
-                className={`w-full py-4 rounded-xl font-black text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
-                  isNeo
-                    ? 'bg-[#4EFE82] hover:bg-[#3de870] text-black border-[3px] border-black shadow-[5px_5px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none'
-                    : 'bg-red-600 hover:bg-red-500 text-white shadow-lg'
-                }`}
+                className="apple-button-primary w-full py-3.5 rounded-full font-medium text-xs tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                {savingSettings ? 'Menyimpan...' : 'SIMPAN SEMUA PENGATURAN'}
+                {savingSettings ? 'Menyimpan...' : 'Simpan Semua Pengaturan'}
               </button>
             </form>
 
             {/* Token & Security Section */}
-            <div
-              className={`p-6 rounded-2xl space-y-4 ${
-                isNeo
-                  ? 'bg-white border-[3px] border-black shadow-[6px_6px_0px_0px_#000]'
-                  : 'bg-zinc-900 border border-zinc-800 shadow-xl'
-              }`}
-            >
+            <div className="apple-card p-6 rounded-3xl space-y-4">
               <div className="flex items-center gap-2">
-                <div
-                  className={`p-1.5 rounded-lg ${
-                    isNeo ? 'bg-[#FF4D4D] text-white border-2 border-black' : 'bg-rose-500/20 text-rose-400'
-                  }`}
-                >
-                  <Lock className="w-5 h-5 stroke-[2.5]" />
+                <div className="p-1.5 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  <Lock className="w-4 h-4" />
                 </div>
-                <h3 className="font-black text-base uppercase tracking-wider">
+                <h3 className="font-semibold text-sm tracking-tight text-white">
                   Keamanan & Token Overlay
                 </h3>
               </div>
 
-              <div
-                className={`flex items-center justify-between p-4 rounded-xl ${
-                  isNeo
-                    ? 'bg-zinc-50 border-2 border-black shadow-[3px_3px_0px_0px_#000]'
-                    : 'bg-black/40 border border-zinc-800'
-                }`}
-              >
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
                 <div>
-                  <div className="text-xs font-black uppercase">Regenerate Token Overlay</div>
-                  <div className={`text-[11px] font-bold ${isNeo ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                  <div className="text-xs font-semibold text-white">Regenerate Token Overlay</div>
+                  <div className="text-[11px] text-zinc-400 font-normal mt-0.5">
                     Jika URL OBS Anda bocor saat streaming, Anda dapat membuat token baru seketika.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleRegenerateToken}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
-                    isNeo
-                      ? 'bg-[#FF4D4D] hover:bg-red-600 text-white border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                      : 'bg-zinc-800 hover:bg-rose-600 text-white'
-                  }`}
+                  className="apple-button-secondary px-4 py-2 rounded-full text-xs font-medium text-rose-400 hover:text-white hover:bg-rose-600 transition-all cursor-pointer"
                 >
                   Regenerate
                 </button>
@@ -2434,11 +2465,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* PIN Change */}
               <form onSubmit={handleUpdatePin} className="space-y-3 pt-2">
-                <label className="block text-xs font-black uppercase tracking-wider">
+                <label className="block text-xs font-medium text-zinc-300">
                   Ganti PIN Admin Streamer
                 </label>
                 {pinSuccess && (
-                  <div className="text-emerald-500 font-black text-xs">✓ {pinSuccess}</div>
+                  <div className="text-[#30d158] font-medium text-xs">✓ {pinSuccess}</div>
                 )}
                 <div className="flex items-center gap-2.5">
                   <input
@@ -2446,19 +2477,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value)}
                     placeholder="PIN baru (minimal 4 karakter)"
-                    className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-mono font-bold focus:outline-none ${
-                      isNeo
-                        ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_#000]'
-                        : 'bg-zinc-800 border border-zinc-700 text-white focus:border-red-500'
-                    }`}
+                    className="apple-input text-xs font-mono flex-1"
                   />
                   <button
                     type="submit"
-                    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
-                      isNeo
-                        ? 'bg-[#00E5FF] hover:bg-[#00D0E8] text-black border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none'
-                        : 'bg-zinc-800 hover:bg-zinc-700 text-white'
-                    }`}
+                    className="apple-button-primary px-5 py-2.5 rounded-full text-xs font-medium transition-all cursor-pointer"
                   >
                     Simpan PIN
                   </button>

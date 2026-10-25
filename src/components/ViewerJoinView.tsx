@@ -23,18 +23,34 @@ export const ViewerJoinView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [joinedItem, setJoinedItem] = useState<QueueItem | null>(null);
+  const [streamerToken, setStreamerToken] = useState<string>('');
 
   // Load basic public settings
   useEffect(() => {
-    fetch('/api/public/overlay/preview').catch(() => null);
-
+    let token = '';
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      token = params.get('streamer') || params.get('token') || '';
+      setStreamerToken(token);
       const code = params.get('code') || params.get('donation_id');
       if (code) setDonationCode(code);
       const prefilledName = params.get('name') || params.get('donor');
       if (prefilledName) setName(prefilledName);
     }
+
+    const target = token || 'preview';
+    fetch(`/api/public/overlay/${target}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.settings) {
+          if (data.settings.sociabuzz_url) setSociabuzzUrl(data.settings.sociabuzz_url);
+          if (data.settings.min_donation) setMinDonation(data.settings.min_donation);
+          if (typeof data.settings.allow_free_queue === 'boolean') {
+            setAllowFreeQueue(data.settings.allow_free_queue);
+          }
+        }
+      })
+      .catch(() => null);
   }, []);
 
   // Poll or track live position if user is joined
@@ -43,7 +59,8 @@ export const ViewerJoinView: React.FC = () => {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/public/status/${joinedItem.player_id}`);
+        const query = streamerToken ? `?token=${encodeURIComponent(streamerToken)}` : '';
+        const res = await fetch(`/api/public/status/${joinedItem.player_id}${query}`);
         if (res.ok) {
           const data = await res.json();
           if (data.item) {
@@ -56,7 +73,7 @@ export const ViewerJoinView: React.FC = () => {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [joinedItem]);
+  }, [joinedItem, streamerToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +98,7 @@ export const ViewerJoinView: React.FC = () => {
           name: name.trim(),
           game_id: gameId.trim(),
           donation_id: donationCode.trim() || undefined,
+          streamer_token: streamerToken || undefined,
         }),
       });
 
@@ -103,103 +121,101 @@ export const ViewerJoinView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F2EB] text-black flex flex-col justify-between p-4 sm:p-6 font-sans selection:bg-[#FFE600] selection:text-black">
-      <div className="max-w-md w-full mx-auto my-auto py-6">
-        {/* Brand Banner (Neobrutalism) */}
+    <div className="min-h-screen bg-[#000000] text-white flex flex-col justify-between p-4 sm:p-8 font-sans selection:bg-white/20 selection:text-white antialiased">
+      {/* Ambient background glow */}
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(120,119,198,0.12),rgba(255,255,255,0))]" />
+
+      <div className="relative z-10 max-w-md w-full mx-auto my-auto py-8">
+        {/* Brand Banner */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-[#FFE600] border-[2.5px] border-black text-black mb-3 shadow-[4px_4px_0px_0px_#000]">
-            <Swords className="w-8 h-8 stroke-[2.5]" />
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-white/[0.08] border border-white/[0.12] text-white mb-3 shadow-inner">
+            <Swords className="w-5 h-5" />
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-black uppercase">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-[-0.03em] text-white">
             Pendaftaran Antrian 1v1
           </h1>
-          <p className="text-zinc-700 text-xs font-bold mt-1.5">
-            Daftarkan ID Game kamu untuk tanding 1v1 live di stream!
+          <p className="text-zinc-400 text-xs font-normal mt-1 max-w-xs mx-auto">
+            Daftarkan ID Game kamu untuk tanding 1v1 live di stream sekarang.
           </p>
         </div>
 
         {/* Step 1 Callout: Sociabuzz Donation Banner */}
-        <div className="mb-6 rounded-2xl bg-[#FFE600] border-[3px] border-black p-4.5 shadow-[5px_5px_0px_0px_#000]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+        <div className="mb-5 rounded-3xl apple-card p-4.5 border border-white/[0.1] bg-white/[0.03] backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-black text-[#FFE600] border border-black shadow-[1.5px_1.5px_0px_0px_#000]">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30">
                   Langkah 1
                 </span>
-                <h3 className="font-black text-black text-sm uppercase tracking-wider">
+                <h3 className="font-semibold text-white text-xs tracking-tight">
                   Donasi via Sociabuzz
                 </h3>
               </div>
-              <p className="text-xs text-black font-bold mt-1 leading-relaxed">
-                Belum donasi? Buka link donasi resmi streamer di Sociabuzz untuk mendapatkan kode
-                donasi & prioritas VIP/VVIP.
+              <p className="text-xs text-zinc-400 font-normal leading-relaxed pt-1">
+                Dapatkan kode donasi untuk prioritas antrian VVIP / VIP.
               </p>
             </div>
             <a
-              href="https://sociabuzz.com"
+              href={sociabuzzUrl || "https://sociabuzz.com"}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-100 text-black font-black text-xs uppercase border-2 border-black shadow-[2.5px_2.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white hover:bg-zinc-200 text-black font-medium text-xs tracking-tight transition-all cursor-pointer active:scale-[0.98]"
             >
               <span>Donasi</span>
-              <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
+              <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>
 
         {/* Main Card: Form or Success Status */}
-        <div className="rounded-2xl bg-white border-[3px] border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+        <div className="rounded-3xl apple-glass p-6 sm:p-7 border border-white/[0.12] shadow-2xl">
           {joinedItem ? (
             /* SUCCESS VIEW */
-            <div className="space-y-6">
-              <div className="p-4 rounded-xl bg-[#4EFE82] border-2 border-black text-center shadow-[3px_3px_0px_0px_#000]">
-                <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-white text-black flex items-center justify-center border-2 border-black shadow-[2px_2px_0px_0px_#000]">
-                  <CheckCircle2 className="w-7 h-7 stroke-[2.5]" />
+            <div className="space-y-5">
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <CheckCircle2 className="w-5 h-5" />
                 </div>
-                <h2 className="text-lg font-black text-black tracking-wide uppercase">
-                  ✓ Berhasil Masuk Antrian!
+                <h2 className="text-base font-semibold text-white tracking-tight">
+                  Berhasil Masuk Antrian!
                 </h2>
-                <p className="text-xs text-black font-bold mt-0.5">
-                  ID kamu sudah masuk ke sistem overlay OBS streamer
+                <p className="text-xs text-emerald-300 font-normal mt-0.5">
+                  ID kamu otomatis tersinkron ke OBS live overlay streamer
                 </p>
               </div>
 
               {/* Receipt Details */}
-              <div className="bg-zinc-50 rounded-xl p-4 border-2 border-black shadow-[3px_3px_0px_0px_#000] space-y-3 font-mono text-sm">
-                <div className="flex justify-between items-center pb-2 border-b-2 border-black">
-                  <span className="text-zinc-600 text-xs font-black uppercase font-sans">Nama</span>
-                  <span className="font-black text-black text-base font-sans">
+              <div className="apple-card rounded-2xl p-4.5 space-y-3 text-xs">
+                <div className="flex justify-between items-center pb-2.5 border-b border-white/[0.06]">
+                  <span className="text-zinc-500">Nama Player</span>
+                  <span className="font-semibold text-white text-sm">
                     {joinedItem.player.name}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center pb-2 border-b-2 border-black">
-                  <span className="text-zinc-600 text-xs font-black uppercase font-sans">ID Game</span>
-                  <span className="font-black text-black tracking-wider">
+                <div className="flex justify-between items-center pb-2.5 border-b border-white/[0.06]">
+                  <span className="text-zinc-500">ID Game</span>
+                  <span className="font-mono text-zinc-200">
                     {joinedItem.player.game_id}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center pb-2 border-b-2 border-black">
-                  <span className="text-zinc-600 text-xs font-black uppercase font-sans">
-                    Posisi Saat Ini
-                  </span>
-                  <span className="px-3 py-1 rounded-lg bg-[#FFE600] text-black font-black text-base border-2 border-black shadow-[2px_2px_0px_0px_#000] font-sans">
+                <div className="flex justify-between items-center pb-2.5 border-b border-white/[0.06]">
+                  <span className="text-zinc-500">Posisi Antrian</span>
+                  <span className="px-3 py-1 rounded-full bg-white text-black font-semibold text-xs tracking-tight">
                     #{joinedItem.position}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center pb-2 border-b-2 border-black">
-                  <span className="text-zinc-600 text-xs font-black uppercase font-sans">
-                    Membership
-                  </span>
+                <div className="flex justify-between items-center pb-2.5 border-b border-white/[0.06]">
+                  <span className="text-zinc-500">Membership</span>
                   <span
-                    className={`px-2.5 py-0.5 rounded text-xs font-black uppercase border-2 border-black font-sans shadow-[1.5px_1.5px_0px_0px_#000] ${
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium tracking-tight ${
                       joinedItem.player.membership === 'VVIP'
-                        ? 'bg-[#FFE600] text-black'
+                        ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
                         : joinedItem.player.membership === 'VIP'
-                        ? 'bg-[#A259FF] text-white'
-                        : 'bg-black text-white'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                        : 'bg-white/[0.08] text-zinc-300 border border-white/[0.1]'
                     }`}
                   >
                     {joinedItem.player.membership}
@@ -207,19 +223,19 @@ export const ViewerJoinView: React.FC = () => {
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <span className="text-zinc-600 text-xs font-black uppercase font-sans">Status</span>
-                  <span className="inline-flex items-center gap-1.5 font-black text-xs uppercase font-sans">
+                  <span className="text-zinc-500">Status Live</span>
+                  <span className="inline-flex items-center gap-1.5 font-medium text-xs">
                     {joinedItem.status === 'PLAYING' ? (
-                      <span className="text-black bg-[#FF4D4D] text-white px-2 py-0.5 rounded border border-black shadow-[1.5px_1.5px_0px_0px_#000] flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                        SEDANG BERMAIN (LIVE)
+                      <span className="text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                        SEDANG BERTANDING
                       </span>
                     ) : joinedItem.status === 'DONE' ? (
-                      <span className="text-zinc-600">SELESAI</span>
+                      <span className="text-zinc-400">SELESAI</span>
                     ) : (
-                      <span className="text-black flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 stroke-[2.5]" />
-                        MENUNGGU #{joinedItem.position}
+                      <span className="text-zinc-300 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                        Menunggu Giliran #{joinedItem.position}
                       </span>
                     )}
                   </span>
@@ -227,14 +243,14 @@ export const ViewerJoinView: React.FC = () => {
               </div>
 
               {/* Live Tracker Notice */}
-              <div className="p-3 bg-[#EAFAFF] border-2 border-black rounded-xl text-center text-xs text-black font-bold flex items-center justify-center gap-2 shadow-[2px_2px_0px_0px_#000]">
-                <RefreshCw className="w-4 h-4 animate-spin text-black stroke-[2.5]" />
-                <span>Halaman ini otomatis mengupdate giliran antrian kamu.</span>
+              <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-2xl text-center text-xs text-zinc-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#2997ff]" />
+                <span>Halaman ini otomatis merefresh posisi antrian secara live.</span>
               </div>
 
               <button
                 onClick={() => setJoinedItem(null)}
-                className="w-full py-2.5 text-xs text-black font-black uppercase hover:underline cursor-pointer"
+                className="w-full py-2 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
               >
                 Daftarkan player lain / Reset form
               </button>
@@ -243,15 +259,15 @@ export const ViewerJoinView: React.FC = () => {
             /* FORM VIEW */
             <form onSubmit={handleSubmit} className="space-y-4">
               {errorMsg && (
-                <div className="p-3 rounded-xl bg-[#FF4D4D] border-2 border-black text-white text-xs font-black flex items-start gap-2 shadow-[3px_3px_0px_0px_#000]">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-white stroke-[2.5]" />
+                <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-medium flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
                   <span>{errorMsg}</span>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
-                  Nama Player <span className="text-red-600">*</span>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                  Nama Player <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -260,13 +276,13 @@ export const ViewerJoinView: React.FC = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Contoh: GALANG"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border-2 border-black text-black placeholder-zinc-400 font-bold text-sm shadow-[3px_3px_0px_0px_#000] focus:outline-none focus:bg-[#FFFDE8] transition-all"
+                  className="apple-input text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-black uppercase tracking-wider mb-1.5">
-                  ID Game (In-Game ID) <span className="text-red-600">*</span>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                  ID Game (In-Game ID) <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -275,19 +291,19 @@ export const ViewerJoinView: React.FC = () => {
                   value={gameId}
                   onChange={(e) => setGameId(e.target.value)}
                   placeholder="Contoh: 12933886421 (8492)"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border-2 border-black text-black placeholder-zinc-400 font-mono font-bold text-sm shadow-[3px_3px_0px_0px_#000] focus:outline-none focus:bg-[#FFFDE8] transition-all"
+                  className="apple-input text-sm font-mono"
                 />
-                <span className="text-[11px] text-zinc-600 font-bold mt-1 block">
+                <span className="text-[11px] text-zinc-500 mt-1 block">
                   Pastikan ID Game dan Server ID akurat agar streamer dapat meng-invite kamu ke room.
                 </span>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-black uppercase tracking-wider">
-                    Kode Donasi / ID Donasi Sociabuzz
+                  <label className="block text-xs font-medium text-zinc-400">
+                    Kode Donasi Sociabuzz
                   </label>
-                  <span className="text-[10px] text-black font-black bg-[#FFE600] px-1.5 py-0.5 rounded border border-black">
+                  <span className="text-[10px] text-zinc-400 font-medium bg-white/[0.06] px-2 py-0.5 rounded-full border border-white/[0.08]">
                     {allowFreeQueue ? 'Opsional' : 'Wajib'}
                   </span>
                 </div>
@@ -296,11 +312,10 @@ export const ViewerJoinView: React.FC = () => {
                   value={donationCode}
                   onChange={(e) => setDonationCode(e.target.value)}
                   placeholder="Contoh: SB-882910 atau ID Donasi"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border-2 border-black text-black placeholder-zinc-400 font-mono font-bold text-sm shadow-[3px_3px_0px_0px_#000] focus:outline-none focus:bg-[#FFFDE8] transition-all"
+                  className="apple-input text-sm font-mono"
                 />
-                <span className="text-[11px] text-zinc-600 font-bold mt-1 block">
-                  Cek email konfirmasi Sociabuzz atau struk bukti donasi untuk mendapatkan kode ID
-                  donasi.
+                <span className="text-[11px] text-zinc-500 mt-1 block">
+                  Cek email konfirmasi Sociabuzz atau bukti donasi untuk mendapatkan kode ID donasi.
                 </span>
               </div>
 
@@ -308,7 +323,7 @@ export const ViewerJoinView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 px-4 rounded-xl bg-[#FFE600] hover:bg-[#FFD700] text-black font-black text-sm uppercase tracking-wider border-[2.5px] border-black shadow-[4px_4px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 rounded-full bg-white hover:bg-zinc-100 text-black font-medium text-sm tracking-tight active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-white/5"
                 >
                   {loading ? (
                     <>
@@ -317,8 +332,8 @@ export const ViewerJoinView: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <span>MASUK ANTRIAN</span>
-                      <ArrowRight className="w-4 h-4 stroke-[3]" />
+                      <span>Masuk Antrian</span>
+                      <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
@@ -327,28 +342,28 @@ export const ViewerJoinView: React.FC = () => {
           )}
         </div>
 
-        {/* Benefits Card (Neobrutalism) */}
-        <div className="mt-6 grid grid-cols-2 gap-3 text-xs">
-          <div className="p-3.5 rounded-xl bg-white border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center gap-2.5">
-            <Trophy className="w-6 h-6 text-black shrink-0 stroke-[2.5]" />
+        {/* Benefits Grid */}
+        <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
+          <div className="p-3.5 rounded-2xl apple-card flex items-center gap-2.5">
+            <Trophy className="w-4 h-4 text-[#ffd60a] shrink-0" />
             <div>
-              <p className="font-black text-black uppercase">Slot VVIP</p>
-              <p className="text-[11px] text-zinc-600 font-bold">Prioritas paling atas</p>
+              <p className="font-medium text-white tracking-tight">Slot Prioritas VVIP</p>
+              <p className="text-[11px] text-zinc-500">Urutan terdepan live</p>
             </div>
           </div>
-          <div className="p-3.5 rounded-xl bg-white border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center gap-2.5">
-            <ShieldCheck className="w-6 h-6 text-black shrink-0 stroke-[2.5]" />
+          <div className="p-3.5 rounded-2xl apple-card flex items-center gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-[#30d158] shrink-0" />
             <div>
-              <p className="font-black text-black uppercase">Realtime OBS</p>
-              <p className="text-[11px] text-zinc-600 font-bold">Tampil langsung di live</p>
+              <p className="font-medium text-white tracking-tight">Realtime OBS</p>
+              <p className="text-[11px] text-zinc-500">Tampil instan di stream</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <footer className="text-center text-xs text-black font-black uppercase tracking-wider py-3">
-        Sistem Antrian 1v1 Streamer • Powered by Sociabuzz Integration
+      <footer className="relative z-10 text-center text-[11px] text-zinc-600 font-normal tracking-tight py-4">
+        Sistem Antrian 1v1 Streamer • Powered by Sociabuzz Webhook Integration
       </footer>
     </div>
   );

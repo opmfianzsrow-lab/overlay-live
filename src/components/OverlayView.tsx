@@ -21,6 +21,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
   const [settings, setSettings] = useState<OverlaySettings | null>(previewSettings || null);
   const [queue, setQueue] = useState<QueueItem[]>(previewQueue || []);
   const [connected, setConnected] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const prevFirstPlayerId = useRef<string | null>(null);
   const prevQueueLength = useRef<number>(0);
 
@@ -40,10 +41,16 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 
     fetch(`/api/public/overlay/${streamToken}`)
       .then((res) => {
-        if (!res.ok) throw new Error('Failed to load overlay');
+        if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error('Overlay tidak ditemukan atau link sudah tidak aktif.');
+          }
+          throw new Error('Gagal memuat data overlay.');
+        }
         return res.json();
       })
       .then((data) => {
+        setErrorMsg(null);
         setSettings(data.settings);
         setQueue(data.queue);
         if (data.queue.length > 0) {
@@ -51,7 +58,10 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
           prevQueueLength.current = data.queue.length;
         }
       })
-      .catch((err) => console.error('Overlay fetch error:', err));
+      .catch((err) => {
+        setErrorMsg(err.message || 'Overlay tidak ditemukan atau link sudah tidak aktif.');
+        console.error('Overlay fetch error:', err);
+      });
 
     const eventSource = new EventSource(`/api/realtime?token=${streamToken}`);
 
@@ -107,6 +117,20 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
     };
   }, [token, isPreviewMode, previewQueue]);
 
+  if (errorMsg && !isPreviewMode) {
+    return (
+      <div className="p-4 bg-transparent select-none">
+        <div className="max-w-[420px] rounded-2xl p-4 bg-black/85 border-2 border-red-500/80 text-white shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-2.5 text-red-400 font-black text-xs uppercase mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            <span>Link Overlay Tidak Valid</span>
+          </div>
+          <p className="text-xs text-zinc-300 font-bold">{errorMsg}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!settings && !previewSettings) {
     return (
       <div className="p-4 bg-transparent text-zinc-400 font-mono text-xs">
@@ -120,7 +144,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 
   const currentTheme = settings?.theme ? THEMES[settings.theme] || THEMES.obsidian : THEMES.obsidian;
   const maxVisible = settings?.max_visible_players || 5;
-  const isHidePlaying = settings?.hide_playing_in_overlay !== false; // Default true as requested by user
+  const isHidePlaying = settings?.hide_playing_in_overlay === true; // Default false to show LIVE indicator at #1
   
   // Filter queue: if isHidePlaying is true, omit status === 'PLAYING' so only upcoming waiting players are shown!
   const filteredQueue = isHidePlaying
@@ -131,6 +155,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
   const userOpacity = settings?.opacity ?? 96;
   const opacityVal = Math.max(0.6, Math.min(1, userOpacity / 100));
   const titleText = settings?.title || 'ANTRIAN BY1';
+  const enableAnimation = settings?.enable_animation !== false;
 
   // Sizing styles
   const cardSizeClasses = {
@@ -185,10 +210,12 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
         - max-h-[85vh] with hidden scrollbars if queue is long
       */}
       <div
-        className="rb-frame max-w-[96vw] h-auto max-h-[85vh] flex flex-col rounded-[22px] overflow-hidden transition-all duration-300"
+        className="rb-frame max-w-[96vw] h-auto max-h-[85vh] flex flex-col overflow-hidden transition-all duration-300"
         style={{
           width: isPreviewMode ? '100%' : `${panelWidth}px`,
           maxWidth: `${panelWidth}px`,
+          height: 'auto',
+          borderRadius: `${settings?.border_radius ?? 22}px`,
           backgroundColor: `rgba(${currentTheme.frameRgba}, ${opacityVal})`,
         }}
       >
@@ -266,11 +293,25 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
                     initial={{ opacity: 0, scale: 0.92, y: 12 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.88, x: 20 }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 420,
-                      damping: 30,
-                    }}
+                    transition={
+                      enableAnimation
+                        ? {
+                            type: 'spring',
+                            stiffness:
+                              settings?.animation_speed === 'fast'
+                                ? 550
+                                : settings?.animation_speed === 'slow'
+                                ? 250
+                                : 420,
+                            damping:
+                              settings?.animation_speed === 'fast'
+                                ? 25
+                                : settings?.animation_speed === 'slow'
+                                ? 35
+                                : 30,
+                          }
+                        : { duration: 0 }
+                    }
                     style={{
                       background: isPlaying ? currentTheme.tileLiveBg : currentTheme.tileBg,
                     }}

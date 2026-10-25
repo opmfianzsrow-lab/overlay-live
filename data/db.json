@@ -1,260 +1,231 @@
 {
+  "users": [
+    {
+      "id": "usr_demo",
+      "email": "hfiz22379@gmail.com",
+      "name": "Streamer Pro Demo",
+      "avatar_url": "https://api.dicebear.com/7.x/bottts/svg?seed=streamer",
+      "created_at": "2026-10-25T12:33:15.302Z"
+    }
+  ],
+  "overlay_tokens": [
+    {
+      "id": "tok_demo",
+      "user_id": "usr_demo",
+      "token": "1v1_B3lF-9eM",
+      "created_at": "2026-10-25T12:33:15.302Z"
+    }
+  ],
   "settings": {
-    "id": "settings_main",
-    "streamer_token": "1v1_B3lF-9eM",
-    "title": "ANTRIAN BY1",
-    "theme": "obsidian",
-    "font_size": "medium",
-    "max_visible_players": 5,
-    "animation": "smooth",
-    "opacity": 96,
-    "card_size": "normal",
-    "spacing": 8,
-    "sociabuzz_url": "https://sociabuzz.com/streamerkeren",
-    "min_donation": 10000,
-    "vip_min_donation": 25000,
-    "vvip_min_donation": 50000,
-    "max_queue_limit": 50,
-    "sound_alert": true,
-    "allow_free_queue": false,
-    "live_badge_text": "LIVE",
-    "hide_playing_in_overlay": true,
-    "dashboard_ui_theme": "neobrutalism",
-    "created_at": "2026-10-25T09:15:38.665Z",
-    "updated_at": "2026-10-25T09:15:38.665Z"
+    "usr_demo": {
+      "id": "settings_main",
+      "user_id": "usr_demo",
+      "streamer_token": "1v1_B3lF-9eM",
+      "webhook_key": "sb_wh_NUmFqczs1V",
+      "webhook_secret": "sb_sec_PaOEgHeIeUbPBCbj",
+      "title": "ANTRIAN BY1",
+      "theme": "obsidian",
+      "font_size": "medium",
+      "max_visible_players": 5,
+      "animation": "smooth",
+      "opacity": 96,
+      "card_size": "normal",
+      "spacing": 8,
+      "sociabuzz_url": "https://sociabuzz.com/streamerkeren",
+      "min_donation": 10000,
+      "vip_min_donation": 25000,
+      "vvip_min_donation": 50000,
+      "max_queue_limit": 50,
+      "sound_alert": true,
+      "allow_free_queue": false,
+      "live_badge_text": "LIVE",
+      "hide_playing_in_overlay": false,
+      "dashboard_ui_theme": "neobrutalism",
+      "panel_width": 440,
+      "show_id": true,
+      "show_vip_badge": true,
+      "show_live_badge": true,
+      "border_radius": 22,
+      "enable_animation": true,
+      "animation_speed": "normal",
+      "created_at": "2026-10-25T09:15:38.665Z",
+      "updated_at": "2026-10-25T09:15:38.665Z"
+    }
   },
   "players": [
     {
       "id": "p-1",
+      "user_id": "usr_demo",
       "name": "GALANG",
       "game_id": "12933886421",
       "membership": "VVIP",
-      "status": "DONE",
-      "created_at": "2026-10-25T09:15:38.665Z",
-      "updated_at": "2026-10-25T09:16:05.045Z"
+      "status": "PLAYING",
+      "created_at": "2026-10-25T12:33:15.302Z",
+      "updated_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "p-2",
+      "user_id": "usr_demo",
       "name": "PENGUSAHA",
       "game_id": "17456782197",
       "membership": "VVIP",
-      "status": "PLAYING",
-      "created_at": "2026-10-25T09:15:38.665Z",
-      "updated_at": "2026-10-25T09:16:05.045Z"
+      "status": "QUEUED",
+      "created_at": "2026-10-25T12:33:15.302Z",
+      "updated_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "p-3",
+      "user_id": "usr_demo",
       "name": "JOKO W",
       "game_id": "1849448577",
       "membership": "VIP",
       "status": "QUEUED",
-      "created_at": "2026-10-25T09:15:38.665Z",
-      "updated_at": "2026-10-25T09:15:38.665Z"
+      "created_at": "2026-10-25T12:33:15.302Z",
+      "updated_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "p-4",
+      "user_id": "usr_demo",
       "name": "LIONEL",
       "game_id": "8766413615",
       "membership": "VIP",
-      "status": "CANCELLED",
-      "created_at": "2026-10-25T09:15:38.665Z",
-      "updated_at": "2026-10-25T11:34:21.492Z"
+      "status": "QUEUED",
+      "created_at": "2026-10-25T12:33:15.302Z",
+      "updated_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "p-5",
+      "user_id": "usr_demo",
       "name": "RIZKY PRO",
       "game_id": "9928374112",
       "membership": "REGULAR",
       "status": "QUEUED",
-      "created_at": "2026-10-25T09:15:38.665Z",
-      "updated_at": "2026-10-25T09:15:38.665Z"
-    },
-    {
-      "id": "p-0fdf9034",
-      "name": "SUPER_DONOR",
-      "game_id": "7788990011",
-      "membership": "VVIP",
-      "status": "QUEUED",
-      "created_at": "2026-10-25T09:15:57.660Z",
-      "updated_at": "2026-10-25T09:15:57.660Z"
+      "created_at": "2026-10-25T12:33:15.302Z",
+      "updated_at": "2026-10-25T12:33:15.302Z"
     }
   ],
   "queue": [
     {
       "id": "q-1",
+      "user_id": "usr_demo",
       "player_id": "p-1",
       "position": 1,
-      "status": "DONE",
-      "joined_at": "2026-10-25T09:15:38.665Z"
+      "status": "PLAYING",
+      "joined_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "q-2",
+      "user_id": "usr_demo",
       "player_id": "p-2",
-      "position": 1,
-      "status": "PLAYING",
-      "joined_at": "2026-10-25T09:15:38.665Z"
+      "position": 2,
+      "status": "QUEUED",
+      "joined_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "q-3",
+      "user_id": "usr_demo",
       "player_id": "p-3",
       "position": 3,
       "status": "QUEUED",
-      "joined_at": "2026-10-25T09:15:38.665Z"
+      "joined_at": "2026-10-25T12:33:15.302Z"
+    },
+    {
+      "id": "q-4",
+      "user_id": "usr_demo",
+      "player_id": "p-4",
+      "position": 4,
+      "status": "QUEUED",
+      "joined_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "q-5",
+      "user_id": "usr_demo",
       "player_id": "p-5",
-      "position": 4,
+      "position": 5,
       "status": "QUEUED",
-      "joined_at": "2026-10-25T09:15:38.665Z"
-    },
-    {
-      "id": "q-178ec454",
-      "player_id": "p-0fdf9034",
-      "position": 2,
-      "status": "QUEUED",
-      "joined_at": "2026-10-25T09:15:57.660Z"
+      "joined_at": "2026-10-25T12:33:15.302Z"
     }
   ],
   "donations": [
     {
-      "id": "don-887f9229",
-      "external_donation_id": "SB-999001",
-      "donor_name": "SUPER_DONOR",
-      "amount": 50000,
-      "message": "Gas 1v1 dong!",
-      "status": "CLAIMED",
-      "created_at": "2026-10-25T09:15:53.811Z",
-      "claimed_by_player_id": "p-0fdf9034",
-      "claimed_at": "2026-10-25T09:15:57.660Z"
-    },
-    {
       "id": "don-1",
+      "user_id": "usr_demo",
       "external_donation_id": "SB-882910",
       "donor_name": "GALANG",
       "amount": 50000,
       "message": "1v1 bang, pake hero andalan!",
       "status": "CLAIMED",
       "claimed_by_player_id": "p-1",
-      "claimed_at": "2026-10-25T09:15:38.665Z",
-      "created_at": "2026-10-25T09:15:38.665Z"
+      "claimed_at": "2026-10-25T12:33:15.302Z",
+      "created_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "don-2",
+      "user_id": "usr_demo",
       "external_donation_id": "SB-882911",
       "donor_name": "PENGUSAHA",
       "amount": 50000,
       "message": "Spesial VVIP slot",
       "status": "CLAIMED",
       "claimed_by_player_id": "p-2",
-      "claimed_at": "2026-10-25T09:15:38.665Z",
-      "created_at": "2026-10-25T09:15:38.665Z"
+      "claimed_at": "2026-10-25T12:33:15.302Z",
+      "created_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "don-3",
+      "user_id": "usr_demo",
       "external_donation_id": "SB-882912",
       "donor_name": "JOKO W",
       "amount": 25000,
       "message": "Salam 1v1 gaskeun",
       "status": "CLAIMED",
       "claimed_by_player_id": "p-3",
-      "claimed_at": "2026-10-25T09:15:38.665Z",
-      "created_at": "2026-10-25T09:15:38.665Z"
+      "claimed_at": "2026-10-25T12:33:15.302Z",
+      "created_at": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "don-4",
+      "user_id": "usr_demo",
       "external_donation_id": "SB-882913",
       "donor_name": "LIONEL",
       "amount": 25000,
       "message": "Gas main sama streamer",
       "status": "CLAIMED",
       "claimed_by_player_id": "p-4",
-      "claimed_at": "2026-10-25T09:15:38.665Z",
-      "created_at": "2026-10-25T09:15:38.665Z"
+      "claimed_at": "2026-10-25T12:33:15.302Z",
+      "created_at": "2026-10-25T12:33:15.302Z"
     }
   ],
-  "webhook_events": [
-    {
-      "id": "wh-777ef177",
-      "provider": "sociabuzz",
-      "external_event_id": "SB-999001",
-      "payload": {
-        "donation_id": "SB-999001",
-        "donor_name": "SUPER_DONOR",
-        "amount": 50000
-      },
-      "processed": true,
-      "created_at": "2026-10-25T09:16:01.352Z"
-    },
-    {
-      "id": "wh-aa6371f4",
-      "provider": "sociabuzz",
-      "external_event_id": "SB-999001",
-      "payload": {
-        "donation_id": "SB-999001",
-        "donor_name": "SUPER_DONOR",
-        "amount": 50000,
-        "message": "Gas 1v1 dong!"
-      },
-      "processed": true,
-      "created_at": "2026-10-25T09:15:53.818Z"
-    }
-  ],
+  "webhook_events": [],
   "activity_logs": [
     {
-      "id": "log-1792928061493-hkn0",
-      "text": "LIONEL dihapus dari antrian",
-      "type": "skip",
-      "timestamp": "2026-10-25T11:34:21.493Z"
-    },
-    {
-      "id": "log-1792919765047-qtec",
-      "text": "PENGUSAHA sekarang bermain (LIVE)",
-      "type": "play",
-      "timestamp": "2026-10-25T09:16:05.047Z"
-    },
-    {
-      "id": "log-1792919765046-cpw1",
-      "text": "GALANG selesai bermain (DONE)",
-      "type": "done",
-      "timestamp": "2026-10-25T09:16:05.046Z"
-    },
-    {
-      "id": "log-1792919757660-x304",
-      "text": "SUPER_DONOR (7788990011) masuk antrian #3 [VVIP]",
-      "type": "join",
-      "timestamp": "2026-10-25T09:15:57.660Z"
-    },
-    {
-      "id": "log-1792919753817-8hle",
-      "text": "Donasi Sociabuzz masuk: SUPER_DONOR (Rp 50.000) [SB-999001]",
-      "type": "donation",
-      "timestamp": "2026-10-25T09:15:53.817Z"
-    },
-    {
       "id": "log-1",
+      "user_id": "usr_demo",
       "text": "GALANG sedang bermain (LIVE)",
       "type": "play",
-      "timestamp": "2026-10-25T09:15:38.665Z"
+      "timestamp": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "log-2",
+      "user_id": "usr_demo",
       "text": "PENGUSAHA bergabung ke antrian #2 (VVIP)",
       "type": "join",
-      "timestamp": "2026-10-25T09:15:38.665Z"
+      "timestamp": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "log-3",
+      "user_id": "usr_demo",
       "text": "JOKO W bergabung ke antrian #3 (VIP)",
       "type": "join",
-      "timestamp": "2026-10-25T09:15:38.665Z"
+      "timestamp": "2026-10-25T12:33:15.302Z"
     },
     {
       "id": "log-4",
+      "user_id": "usr_demo",
       "text": "Donasi masuk dari GALANG sebesar Rp 50.000",
       "type": "donation",
-      "timestamp": "2026-10-25T09:15:38.665Z"
+      "timestamp": "2026-10-25T12:33:15.302Z"
     }
   ],
-  "admin_pin": "streamer123"
+  "sessions": {}
 }
