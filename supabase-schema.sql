@@ -244,9 +244,14 @@ DECLARE
   user_full_name TEXT;
   user_avatar TEXT;
 BEGIN
+  -- Prevent duplicate execution if profile already exists for this auth_user_id
+  IF EXISTS (SELECT 1 FROM public.profiles WHERE auth_user_id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+
   new_profile_id := 'usr_' || substring(md5(random()::text) from 1 for 12);
-  new_token := '1v1_' || substring(replace(uuid_generate_v4()::text, '-', '') from 1 for 16);
-  new_webhook_key := 'sb_' || substring(replace(uuid_generate_v4()::text, '-', '') from 1 for 16);
+  new_token := '1v1_' || substring(replace(gen_random_uuid()::text, '-', '') from 1 for 16);
+  new_webhook_key := 'sb_' || substring(replace(gen_random_uuid()::text, '-', '') from 1 for 16);
   
   user_full_name := COALESCE(
     NEW.raw_user_meta_data->>'full_name',
@@ -261,15 +266,18 @@ BEGIN
 
   -- 1. Create Profile
   INSERT INTO public.profiles (id, auth_user_id, name, email, avatar_url, role)
-  VALUES (new_profile_id, NEW.id, user_full_name, NEW.email, user_avatar, 'streamer');
+  VALUES (new_profile_id, NEW.id, user_full_name, NEW.email, user_avatar, 'streamer')
+  ON CONFLICT (auth_user_id) DO NOTHING;
 
   -- 2. Create Default Queue
   INSERT INTO public.queues (user_id, name)
-  VALUES (new_profile_id, 'Antrian 1v1 Stream');
+  VALUES (new_profile_id, 'Antrian 1v1 Stream')
+  ON CONFLICT DO NOTHING;
 
   -- 3. Create Unique Overlay Token
   INSERT INTO public.overlay_tokens (user_id, token)
-  VALUES (new_profile_id, new_token);
+  VALUES (new_profile_id, new_token)
+  ON CONFLICT DO NOTHING;
 
   -- 4. Create Default Overlay Settings
   INSERT INTO public.overlay_settings (
@@ -291,12 +299,18 @@ BEGIN
     10000,
     25000,
     50000
-  );
+  )
+  ON CONFLICT (user_id) DO NOTHING;
 
   -- 5. Add Initial Activity Log
   INSERT INTO public.activity_logs (user_id, text, type)
-  VALUES (new_profile_id, 'Akun streamer dan overlay OBS berhasil diinisialisasi', 'join');
+  VALUES (new_profile_id, 'Akun streamer dan overlay OBS berhasil diinisialisasi', 'join')
+  ON CONFLICT DO NOTHING;
 
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Safe fallback: log error to Postgres log without aborting user creation in auth.users
+  RAISE WARNING 'handle_new_user trigger error: %', SQLERRM;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

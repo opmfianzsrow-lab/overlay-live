@@ -1,28 +1,31 @@
 import { createClient, SupabaseClient, User, Session } from '@supabase/supabase-js';
 
-const DEFAULT_SUPABASE_URL = 'https://ddznezhftcwmftdrnyso.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_ueUrs8_po2mt8nZwMaih0w_pT0MR6ImSSS';
-
 export const getSupabaseUrl = (): string => {
-  const url = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  return typeof url === 'string' ? url.trim() : DEFAULT_SUPABASE_URL;
+  const url = import.meta.env.VITE_SUPABASE_URL || 'https://ddznezhftcwmftdrnyso.supabase.co';
+  return typeof url === 'string' ? url.trim() : 'https://ddznezhftcwmftdrnyso.supabase.co';
 };
 
 export const getSupabaseAnonKey = (): string => {
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
-  return typeof key === 'string' ? key.trim() : DEFAULT_SUPABASE_ANON_KEY;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  return typeof key === 'string' ? key.trim() : '';
 };
 
 export const isSupabaseConfigured = (): boolean => {
   const url = getSupabaseUrl();
   const key = getSupabaseAnonKey();
-  return Boolean(
-    url.length > 0 &&
-    key.length > 0 &&
-    !url.includes('your-project') &&
-    !key.includes('your-supabase-anon-key')
-  );
+  return Boolean(url && url.length > 0 && key && key.length > 0);
 };
+
+// Safe debug logging (NO full keys printed)
+if (typeof window !== 'undefined') {
+  const url = getSupabaseUrl();
+  const key = getSupabaseAnonKey();
+  console.log('[Supabase Config Debug]', {
+    url,
+    hasKey: Boolean(key),
+    keyPrefix: key ? key.slice(0, 15) + '...' : 'MISSING',
+  });
+}
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured()
   ? createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
@@ -33,6 +36,68 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
       },
     })
   : null;
+
+/**
+ * Performs lightweight diagnostic check against Supabase
+ */
+export async function testSupabaseConnection(): Promise<{
+  urlAvailable: boolean;
+  keyAvailable: boolean;
+  keyPrefix: string;
+  clientCreated: boolean;
+  pingSuccess: boolean;
+  pingMessage: string;
+}> {
+  const url = getSupabaseUrl();
+  const key = getSupabaseAnonKey();
+  const urlAvailable = Boolean(url && url.length > 0);
+  const keyAvailable = Boolean(key && key.length > 0);
+  const keyPrefix = key ? key.slice(0, 15) + '...' : 'MISSING';
+  const clientCreated = Boolean(supabase);
+
+  if (!supabase || !urlAvailable || !keyAvailable) {
+    return {
+      urlAvailable,
+      keyAvailable,
+      keyPrefix,
+      clientCreated,
+      pingSuccess: false,
+      pingMessage: 'Supabase client belum terinisialisasi (URL atau Key kosong).',
+    };
+  }
+
+  try {
+    const { error } = await supabase.auth.getSession();
+    if (error) {
+      return {
+        urlAvailable,
+        keyAvailable,
+        keyPrefix,
+        clientCreated,
+        pingSuccess: false,
+        pingMessage: error.message,
+      };
+    }
+    return {
+      urlAvailable,
+      keyAvailable,
+      keyPrefix,
+      clientCreated,
+      pingSuccess: true,
+      pingMessage: 'Koneksi ke Supabase Auth API berhasil!',
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Gagal menghubungi server Supabase.';
+    return {
+      urlAvailable,
+      keyAvailable,
+      keyPrefix,
+      clientCreated,
+      pingSuccess: false,
+      pingMessage: msg,
+    };
+  }
+}
 
 /**
  * Validates email address format
@@ -53,7 +118,7 @@ export async function signUpWithEmail(
   if (!isSupabaseConfigured() || !supabase) {
     return {
       error:
-        'Supabase belum terkonfigurasi dengan benar. Harap periksa VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada environment variables Anda.',
+        'Supabase belum terkonfigurasi. Harap tentukan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada file .env Anda.',
     };
   }
 
@@ -70,61 +135,47 @@ export async function signUpWithEmail(
     return { error: 'Password minimal harus 6 karakter.' };
   }
 
-  const { data, error } = await supabase.auth.signUp({
-    email: cleanEmail,
-    password,
-    options: {
-      data: {
-        full_name: cleanName,
-        name: cleanName,
-      },
-      emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-    },
-  });
-
-  if (error) {
-    return { error: translateAuthError(error.message) };
-  }
-
-  let user = data.user;
-  let session = data.session;
-
-  // Check if Supabase returned zero identities (means email is already registered)
-  if (user && Array.isArray(user.identities) && user.identities.length === 0) {
-    const signInRes = await supabase.auth.signInWithPassword({
+  try {
+    const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
+      options: {
+        data: {
+          full_name: cleanName,
+          name: cleanName,
+        },
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
     });
-    if (signInRes.data?.user) {
+
+    if (error) {
+      console.warn('[Supabase Auth] signUp raw error:', error.message);
+      return { error: error.message };
+    }
+
+    const user = data.user;
+    const session = data.session;
+
+    // Check if Supabase returned zero identities (means email is already registered)
+    if (user && Array.isArray(user.identities) && user.identities.length === 0) {
       return {
-        user: signInRes.data.user,
-        session: signInRes.data.session,
+        error: 'Email ini sudah terdaftar di Supabase Auth. Silakan masuk menggunakan menu Login atau gunakan fitur Lupa Password.',
       };
     }
+
+    // If user created but session is missing, Email Confirmation is active in Supabase Console
+    const needVerification = Boolean(user && !session);
+
     return {
-      error: 'Email ini sudah terdaftar di Supabase Auth. Silakan masuk menggunakan menu Login.',
+      user,
+      session,
+      needEmailVerification: needVerification,
     };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Terjadi kesalahan jaringan atau koneksi Supabase.';
+    console.error('[Supabase Auth] signUp exception:', errorMsg);
+    return { error: errorMsg };
   }
-
-  // If user created but session is missing, attempt direct sign in (if Confirm Email is disabled in Supabase)
-  if (user && !session) {
-    const signInRes = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
-    if (signInRes.data?.session) {
-      session = signInRes.data.session;
-      user = signInRes.data.user || user;
-    }
-  }
-
-  const needVerification = Boolean(user && !session);
-
-  return {
-    user,
-    session,
-    needEmailVerification: needVerification,
-  };
 }
 
 /**
@@ -137,7 +188,7 @@ export async function signInWithEmail(
   if (!isSupabaseConfigured() || !supabase) {
     return {
       error:
-        'Supabase belum terkonfigurasi dengan benar. Harap periksa VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.',
+        'Supabase belum terkonfigurasi. Harap tentukan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada file .env.',
     };
   }
 
@@ -150,19 +201,26 @@ export async function signInWithEmail(
     return { error: 'Password wajib diisi.' };
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: cleanEmail,
-    password,
-  });
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
 
-  if (error) {
-    return { error: translateAuthError(error.message) };
+    if (error) {
+      console.warn('[Supabase Auth] signIn raw error:', error.message);
+      return { error: error.message };
+    }
+
+    return {
+      user: data.user,
+      session: data.session,
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Terjadi kesalahan jaringan atau koneksi Supabase.';
+    console.error('[Supabase Auth] signIn exception:', errorMsg);
+    return { error: errorMsg };
   }
-
-  return {
-    user: data.user,
-    session: data.session,
-  };
 }
 
 /**
@@ -174,7 +232,7 @@ export async function sendPasswordResetEmail(
   if (!isSupabaseConfigured() || !supabase) {
     return {
       success: false,
-      error: 'Supabase belum terkonfigurasi. Silakan periksa environment variables Anda.',
+      error: 'Supabase belum terkonfigurasi dengan API key yang valid. Silakan periksa environment variables Anda.',
     };
   }
 
@@ -188,19 +246,25 @@ export async function sendPasswordResetEmail(
       ? `${window.location.origin}/reset-password`
       : 'http://localhost:3000/reset-password';
 
-  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-    redirectTo: redirectUrl,
-  });
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: redirectUrl,
+    });
 
-  if (error) {
-    return { success: false, error: translateAuthError(error.message) };
+    if (error) {
+      console.error('[Supabase Auth] resetPassword error:', error.message);
+      return { success: false, error: translateAuthError(error.message) };
+    }
+
+    return {
+      success: true,
+      message:
+        'Link reset password telah dikirim ke email Anda! Harap periksa folder Inbox atau Spam (pastikan konfigurasi SMTP di Supabase Auth sudah aktif).',
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Terjadi kesalahan jaringan atau koneksi Supabase.';
+    return { success: false, error: translateAuthError(errorMsg) };
   }
-
-  return {
-    success: true,
-    message:
-      'Link reset password telah dikirim ke email Anda! Harap periksa folder Inbox atau Spam (pastikan konfigurasi SMTP di Supabase Auth sudah aktif).',
-  };
 }
 
 /**
@@ -212,7 +276,7 @@ export async function updateUserPassword(
   if (!isSupabaseConfigured() || !supabase) {
     return {
       success: false,
-      error: 'Supabase belum terkonfigurasi dengan benar.',
+      error: 'Supabase belum terkonfigurasi dengan API key yang valid.',
     };
   }
 
@@ -220,15 +284,21 @@ export async function updateUserPassword(
     return { success: false, error: 'Password baru minimal harus 6 karakter.' };
   }
 
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-  });
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
 
-  if (error) {
-    return { success: false, error: translateAuthError(error.message) };
+    if (error) {
+      console.error('[Supabase Auth] updateUser error:', error.message);
+      return { success: false, error: translateAuthError(error.message) };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Terjadi kesalahan jaringan atau koneksi Supabase.';
+    return { success: false, error: translateAuthError(errorMsg) };
   }
-
-  return { success: true };
 }
 
 /**
@@ -253,28 +323,36 @@ export async function signOut(): Promise<void> {
 function translateAuthError(msg: string): string {
   const lower = msg.toLowerCase();
   if (
+    lower.includes('invalid api key') ||
+    lower.includes('api key') ||
+    lower.includes('apikey')
+  ) {
+    return 'Kunci API Supabase tidak valid. Harap periksa VITE_SUPABASE_ANON_KEY atau NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY pada file .env dari Supabase Dashboard > Project Settings > API.';
+  }
+  if (
     lower.includes('disabled') ||
     lower.includes('provider is disabled') ||
     lower.includes('email provider is disabled') ||
     lower.includes('signup is disabled')
   ) {
-    return 'Email Auth Provider di Supabase Console masih NON-AKTIF (DISABLED). Buka Supabase Dashboard > Authentication > Sign In / Providers > Email, lalu klik "Enable Email provider" dan simpan.';
+    return 'Email Auth Provider di Supabase Console masih NON-AKTIF (DISABLED). Buka Supabase Dashboard > Authentication > Providers > Email, lalu aktifkan "Enable Email provider" dan simpan.';
   }
   if (lower.includes('invalid login credentials') || lower.includes('invalid_grant')) {
-    return 'Email atau password yang Anda masukkan salah. Jika akun baru saja dibuat, pastikan Email Auth Provider sudah ENABLED dan opsi "Confirm email" dimatikan di Supabase Dashboard.';
+    return 'Email atau password yang Anda masukkan salah. Jika akun baru saja dibuat, pastikan Anda telah memverifikasi email atau periksa kredensial Anda.';
   }
   if (lower.includes('user already registered') || lower.includes('already exists')) {
-    return 'Email ini sudah terdaftar. Silakan masuk dengan menu Login atau gunakan Lupa Password.';
+    return 'Email ini sudah terdaftar di Supabase Auth. Silakan masuk menggunakan menu Login atau gunakan Lupa Password.';
   }
   if (lower.includes('email not confirmed')) {
-    return 'Email Anda belum dikonfirmasi. Silakan cek inbox/spam email Anda, atau matikan opsi "Confirm email" di Supabase Console -> Authentication -> Providers -> Email.';
+    return 'Email Anda belum dikonfirmasi. Silakan cek inbox/spam email Anda untuk verifikasi, atau matikan opsi "Confirm email" di Supabase Dashboard -> Authentication -> Providers -> Email.';
   }
   if (lower.includes('rate limit') || lower.includes('over_email_send_rate_limit')) {
-    return 'Terlalu banyak permintaan pengiriman email (Rate Limit). Harap tunggu beberapa menit atau matikan "Confirm email" di Supabase Console.';
+    return 'Terlalu banyak permintaan pengiriman email (Rate Limit). Harap tunggu beberapa menit sebelum mencoba lagi.';
   }
   if (lower.includes('password should be at least')) {
     return 'Password minimal harus 6 karakter.';
   }
   return msg;
 }
+
 

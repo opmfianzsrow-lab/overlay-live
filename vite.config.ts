@@ -6,13 +6,13 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const supabaseUrl =
-    process.env.VITE_SUPABASE_URL ||
     env.VITE_SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
     'https://ddznezhftcwmftdrnyso.supabase.co';
   const supabaseAnonKey =
-    process.env.VITE_SUPABASE_ANON_KEY ||
     env.VITE_SUPABASE_ANON_KEY ||
-    'sb_publishable_ueUrs8_po2mt8nZwMaih0w_pT0MR6ImSSS';
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkem5lemhmdGN3bWZ0ZHJueXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMDAzMTgsImV4cCI6MjEwODU3NjMxOH0.XEUvnliZN_7VJhHDHv_DPrtUO6Q81EkYpsPNZulz3rI';
 
   return {
     plugins: [react(), tailwindcss()],

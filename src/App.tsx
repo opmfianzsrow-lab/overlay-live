@@ -108,7 +108,7 @@ function AppContent() {
 
     // 3. Listen to Supabase auth state change (e.g. Email login, Sign Up, Password Reset)
     if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
         if (
           (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') &&
           session?.user &&

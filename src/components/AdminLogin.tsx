@@ -109,21 +109,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
         }
 
         const res = await signInWithEmail(email, password);
-        if (res.user) {
-          await syncUserSession(
-            res.user.id,
-            res.user.email || email,
-            res.user.user_metadata?.full_name || res.user.user_metadata?.name,
-            res.user.user_metadata?.avatar_url
-          );
-        } else if (res.error) {
-          // If Supabase returned an error, attempt session sync fallback
-          try {
-            await syncUserSession('usr_' + Date.now(), email, email.split('@')[0]);
-          } catch {
-            throw new Error(res.error);
-          }
+        if (res.error) {
+          throw new Error(res.error);
         }
+        if (!res.user || !res.session) {
+          throw new Error('Sesi login tidak ditemukan. Harap periksa email dan password Anda.');
+        }
+
+        await syncUserSession(
+          res.user.id,
+          res.user.email || email,
+          res.user.user_metadata?.full_name || res.user.user_metadata?.name,
+          res.user.user_metadata?.avatar_url
+        );
       } else if (authMode === 'register') {
         // --- 2. REGISTER MODE ---
         if (!fullName.trim()) {
@@ -140,7 +138,21 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
         }
 
         const res = await signUpWithEmail(email, password, fullName);
-        if (res.user) {
+        if (res.error) {
+          throw new Error(res.error);
+        }
+
+        if (res.needEmailVerification) {
+          setInfoMessage(
+            `Pendaftaran akun streamer berhasil! Email konfirmasi telah dikirim ke ${email}. Silakan periksa folder Inbox atau Spam email Anda untuk mengonfirmasi akun sebelum login.`
+          );
+          setAuthMode('login');
+          setPassword('');
+          setConfirmPassword('');
+          return;
+        }
+
+        if (res.user && res.session) {
           await syncUserSession(
             res.user.id,
             res.user.email || email,
@@ -148,8 +160,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             res.user.user_metadata?.avatar_url
           );
         } else {
-          // Direct fallback: Ensure streamer account is created and session is granted
-          await syncUserSession('usr_' + Date.now(), email, fullName.trim());
+          throw new Error('Pendaftaran tidak mengembalikan data pengguna dari Supabase.');
         }
       } else if (authMode === 'forgot') {
         // --- 3. FORGOT PASSWORD MODE ---
@@ -352,11 +363,25 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                 </p>
               </div>
 
+
+
               {/* Status & Feedback Messages */}
               {error && (
-                <div className="mb-4 p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{error}</span>
+                <div className="mb-4 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+                    <span>{error}</span>
+                  </div>
+                  {(error.toLowerCase().includes('api') || error.toLowerCase().includes('kunci')) && (
+                    <div className="pt-2 border-t border-red-500/20 text-[11px] text-zinc-300 space-y-1 font-normal leading-relaxed">
+                      <p className="font-semibold text-amber-400">💡 Cara Mengatasi Invalid API Key Supabase:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-zinc-300">
+                        <li>Buka <strong>Supabase Dashboard</strong> (&rarr; Project Settings &rarr; API).</li>
+                        <li>Salin <strong>Project URL</strong> dan <strong>Publishable / Anon key</strong> Anda (format <code>sb_publishable_...</code> atau <code>eyJ...</code>).</li>
+                        <li>Masukkan ke file <code>.env</code> sebagai <code>VITE_SUPABASE_ANON_KEY</code> atau <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code>.</li>
+                      </ol>
+                    </div>
+                  )}
                 </div>
               )}
 

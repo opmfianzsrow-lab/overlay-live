@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/server/db.ts';
@@ -81,13 +81,18 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
 app.post('/api/auth/session', (req, res) => {
   const { auth_user_id, email, name, avatar_url } = req.body;
 
+  if (!auth_user_id || typeof auth_user_id !== 'string' || auth_user_id.trim().length === 0) {
+    res.status(400).json({ error: 'ID Pengguna Supabase (auth_user_id) wajib disertakan.' });
+    return;
+  }
+
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     res.status(400).json({ error: 'Email yang valid wajib disertakan' });
     return;
   }
 
   const result = db.findOrCreateSupabaseUser({
-    auth_user_id: auth_user_id || 'usr_' + Date.now(),
+    auth_user_id: auth_user_id.trim(),
     email: email.trim(),
     name: name ? name.trim() : email.split('@')[0],
     avatar_url,
