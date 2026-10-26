@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Crown, Sparkles, Swords } from 'lucide-react';
-import type { QueueItem, OverlaySettings } from '../types/queue';
+import type { QueueItem, OverlaySettings, PlatformPromotion } from '../types/queue';
 import { THEMES } from '../utils/theme';
 import { playNextMatchChime, playJoinChime } from '../utils/audio';
 
@@ -20,6 +20,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 }) => {
   const [settings, setSettings] = useState<OverlaySettings | null>(previewSettings || null);
   const [queue, setQueue] = useState<QueueItem[]>(previewQueue || []);
+  const [promotion, setPromotion] = useState<PlatformPromotion | null>(null);
   const [connected, setConnected] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const prevFirstPlayerId = useRef<string | null>(null);
@@ -53,6 +54,9 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
         setErrorMsg(null);
         setSettings(data.settings);
         setQueue(data.queue);
+        if (data.promotion) {
+          setPromotion(data.promotion);
+        }
         if (data.queue.length > 0) {
           prevFirstPlayerId.current = data.queue[0]?.player_id || null;
           prevQueueLength.current = data.queue.length;
@@ -410,6 +414,30 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
                 +{filteredQueue.length - maxVisible} player lagi dalam antrian
               </span>
             </div>
+          )}
+
+          {/* Platform Promotion Banner (Rendered only if streamer enabled allow_promotion) */}
+          {promotion && settings?.allow_promotion && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-2 pt-2 border-t border-white/10"
+            >
+              <div className="p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur-md flex items-center justify-between gap-2 text-white">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#ffd60a] text-black uppercase tracking-wider">
+                      PROMO
+                    </span>
+                    <span className="text-[11px] font-bold truncate">{promotion.title}</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-300 truncate mt-0.5">{promotion.description}</p>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-400 shrink-0">
+                  1v1 Platform
+                </span>
+              </div>
+            </motion.div>
           )}
         </div>
       </div>

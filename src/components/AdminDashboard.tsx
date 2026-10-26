@@ -49,6 +49,8 @@ import { EditPlayerModal } from './modals/EditPlayerModal';
 import { AddPlayerModal } from './modals/AddPlayerModal';
 import { SociabuzzSimulatorModal } from './modals/SociabuzzSimulatorModal';
 import { OverlayView } from './OverlayView';
+import { useTheme } from '../context/ThemeContext';
+import { ThemeHeaderControls } from './ThemeHeaderControls';
 
 interface AdminDashboardProps {
   user?: UserProfile;
@@ -66,6 +68,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   adminPin = 'streamer123',
   onLogout,
 }) => {
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [settings, setSettings] = useState<OverlaySettings | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -421,10 +425,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   if (loading && !settings) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#000000] text-white">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <div className="apple-card p-6 rounded-3xl flex items-center gap-3">
           <RefreshCw className="w-5 h-5 animate-spin text-zinc-400" />
-          <span className="text-xs font-medium tracking-tight text-zinc-300">Memuat Dashboard Streamer...</span>
+          <span className={`text-xs font-medium tracking-tight ${isLight ? 'text-zinc-600' : 'text-zinc-300'}`}>
+            Memuat Dashboard Streamer...
+          </span>
         </div>
       </div>
     );
@@ -435,23 +441,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const nextItem = queuedItems[0] || null;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans relative bg-[#000000] text-zinc-100 selection:bg-white/20 selection:text-white antialiased">
+    <div
+      className={`min-h-screen flex flex-col md:flex-row font-sans relative bg-transparent antialiased transition-colors duration-300 ${
+        isLight ? 'text-zinc-900' : 'text-zinc-100'
+      }`}
+    >
       {/* Global In-App Notification Toast */}
       {toast && (
         <div className="fixed top-5 right-5 z-[100] max-w-sm animate-in fade-in slide-in-from-top-4 duration-200">
           <div
-            className={`apple-glass border border-white/[0.12] shadow-2xl backdrop-blur-2xl px-4 py-3 rounded-2xl flex items-center gap-3 ${
+            className={`apple-glass border shadow-2xl backdrop-blur-2xl px-4 py-3 rounded-2xl flex items-center gap-3 ${
               toast.type === 'success'
-                ? 'text-emerald-300'
+                ? 'text-emerald-500 dark:text-emerald-300'
                 : toast.type === 'error'
-                ? 'text-red-300'
-                : 'text-zinc-200'
+                ? 'text-red-500 dark:text-red-300'
+                : 'text-zinc-700 dark:text-zinc-200'
             }`}
           >
             {toast.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-[#30d158]" />
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-[#16a34a] dark:text-[#30d158]" />
             ) : toast.type === 'error' ? (
-              <AlertCircle className="w-4 h-4 shrink-0 text-[#ff453a]" />
+              <AlertCircle className="w-4 h-4 shrink-0 text-[#dc2626] dark:text-[#ff453a]" />
             ) : (
               <Sparkles className="w-4 h-4 shrink-0 text-[#2997ff]" />
             )}
@@ -459,7 +469,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={() => setToast(null)}
-              className="ml-auto text-xs opacity-60 hover:opacity-100 cursor-pointer px-1 text-zinc-400 hover:text-white"
+              className="ml-auto text-xs opacity-60 hover:opacity-100 cursor-pointer px-1"
             >
               ✕
             </button>
@@ -468,18 +478,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* SIDEBAR NAVIGATION - APPLE MINIMAL FROSTED */}
-      <aside className="w-full md:w-68 flex flex-col justify-between shrink-0 z-20 transition-colors duration-200 bg-black/60 border-r border-white/[0.08] backdrop-blur-2xl">
+      <aside
+        className={`w-full md:w-68 flex flex-col justify-between shrink-0 z-20 transition-colors duration-200 border-r backdrop-blur-2xl ${
+          isLight
+            ? 'bg-white/70 border-black/[0.08]'
+            : 'bg-black/60 border-white/[0.08]'
+        }`}
+      >
         <div>
           {/* Logo / Brand Header */}
-          <div className="p-5 flex items-center gap-3 border-b border-white/[0.08] bg-white/[0.02]">
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-white/[0.08] border border-white/[0.12] text-white shadow-inner">
+          <div
+            className={`p-5 flex items-center gap-3 border-b ${
+              isLight ? 'border-black/[0.08] bg-black/[0.02]' : 'border-white/[0.08] bg-white/[0.02]'
+            }`}
+          >
+            <div
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner ${
+                isLight
+                  ? 'bg-zinc-100 border-black/10 text-zinc-900'
+                  : 'bg-white/[0.08] border-white/[0.12] text-white'
+              }`}
+            >
               <Swords className="w-5 h-5 stroke-[2]" />
             </div>
             <div>
-              <h2 className="font-semibold text-base tracking-[-0.02em] text-white leading-tight">
+              <h2
+                className={`font-semibold text-base tracking-[-0.02em] leading-tight ${
+                  isLight ? 'text-zinc-950' : 'text-white'
+                }`}
+              >
                 ANTRIAN 1V1
               </h2>
-              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-tight text-zinc-400 bg-white/[0.04] border border-white/[0.06]">
+              <span
+                className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-tight border ${
+                  isLight
+                    ? 'text-zinc-500 bg-black/[0.04] border-black/[0.06]'
+                    : 'text-zinc-400 bg-white/[0.04] border-white/[0.06]'
+                }`}
+              >
                 Studio Control Hub
               </span>
             </div>
@@ -491,7 +527,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab('dashboard')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'dashboard'
-                  ? 'bg-white text-black font-semibold shadow-sm'
+                  ? isLight
+                    ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                    : 'bg-white text-black font-semibold shadow-sm'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
@@ -503,7 +543,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab('queue')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'queue'
-                  ? 'bg-white text-black font-semibold shadow-sm'
+                  ? isLight
+                    ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                    : 'bg-white text-black font-semibold shadow-sm'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
@@ -513,7 +557,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                  activeTab === 'queue' ? 'bg-black/10 text-black' : 'bg-white/[0.08] text-zinc-300'
+                  activeTab === 'queue'
+                    ? isLight
+                      ? 'bg-white/20 text-white'
+                      : 'bg-black/10 text-black'
+                    : isLight
+                    ? 'bg-black/[0.08] text-zinc-700'
+                    : 'bg-white/[0.08] text-zinc-300'
                 }`}
               >
                 {queue.length}
@@ -524,17 +574,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab('donations')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'donations'
-                  ? 'bg-white text-black font-semibold shadow-sm'
+                  ? isLight
+                    ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                    : 'bg-white text-black font-semibold shadow-sm'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Coins className="w-4 h-4 text-[#ffd60a]" />
+                <Coins className="w-4 h-4 text-[#d97706] dark:text-[#ffd60a]" />
                 <span>Donasi Sociabuzz</span>
               </div>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                  activeTab === 'donations' ? 'bg-black/10 text-black' : 'bg-white/[0.08] text-amber-300'
+                  activeTab === 'donations'
+                    ? isLight
+                      ? 'bg-white/20 text-white'
+                      : 'bg-black/10 text-black'
+                    : isLight
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-white/[0.08] text-amber-300'
                 }`}
               >
                 {donations.length}
@@ -545,7 +605,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab('overlay')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'overlay'
-                  ? 'bg-white text-black font-semibold shadow-sm'
+                  ? isLight
+                    ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                    : 'bg-white text-black font-semibold shadow-sm'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
@@ -557,17 +621,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab('sociabuzz')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'sociabuzz'
-                  ? 'bg-white text-black font-semibold shadow-sm'
+                  ? isLight
+                    ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                    : 'bg-white text-black font-semibold shadow-sm'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Zap className="w-4 h-4 text-[#30d158]" />
+                <Zap className="w-4 h-4 text-[#16a34a] dark:text-[#30d158]" />
                 <span>Sociabuzz Webhook</span>
               </div>
               <span
                 className={`w-2 h-2 rounded-full ${
-                  webhookEvents.length > 0 ? 'bg-[#30d158]' : 'bg-[#ffd60a]'
+                  webhookEvents.length > 0 ? 'bg-[#16a34a] dark:bg-[#30d158]' : 'bg-[#d97706] dark:bg-[#ffd60a]'
                 }`}
                 title={webhookEvents.length > 0 ? 'Webhook Aktif' : 'Menunggu Notifikasi'}
               />
@@ -577,7 +645,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab('settings')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
                 activeTab === 'settings'
-                  ? 'bg-white text-black font-semibold shadow-sm'
+                  ? isLight
+                    ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                    : 'bg-white text-black font-semibold shadow-sm'
+                  : isLight
+                  ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
               }`}
             >
@@ -588,16 +660,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-4 space-y-2.5 border-t border-white/[0.08] bg-white/[0.01]">
+        <div
+          className={`p-4 space-y-2.5 border-t ${
+            isLight
+              ? 'border-black/[0.08] bg-black/[0.01]'
+              : 'border-white/[0.08] bg-white/[0.01]'
+          }`}
+        >
           {/* Quick Viewer Join Link Box */}
           <div className="apple-card p-3 rounded-2xl text-xs">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] uppercase font-medium text-zinc-500">Link Viewer</span>
               <button
                 onClick={() => copyToClipboard(joinUrl, 'join')}
-                className="px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1 cursor-pointer transition-colors bg-white/[0.08] hover:bg-white/[0.14] text-zinc-300"
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1 cursor-pointer transition-colors ${
+                  isLight
+                    ? 'bg-black/[0.06] hover:bg-black/[0.1] text-zinc-700'
+                    : 'bg-white/[0.08] hover:bg-white/[0.14] text-zinc-300'
+                }`}
               >
-                {copiedJoin ? <Check className="w-3 h-3 text-[#30d158]" /> : <Copy className="w-3 h-3" />}
+                {copiedJoin ? <Check className="w-3 h-3 text-[#16a34a]" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedJoin ? 'Tersalin' : 'Copy'}</span>
               </button>
             </div>
@@ -605,7 +687,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               href={joinUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-[11px] truncate block text-zinc-400 hover:text-white transition-colors"
+              className={`font-mono text-[11px] truncate block transition-colors ${
+                isLight ? 'text-zinc-600 hover:text-black' : 'text-zinc-400 hover:text-white'
+              }`}
             >
               /join
             </a>
@@ -613,41 +697,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={onLogout}
-            className="w-full py-2.5 px-3 rounded-full text-xs font-medium tracking-tight flex items-center justify-center gap-2 transition-all cursor-pointer bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-white border border-white/[0.06]"
+            className={`w-full py-2.5 px-3 rounded-full text-xs font-medium tracking-tight flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+              isLight
+                ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-700 hover:text-black border-black/[0.08]'
+                : 'bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-white border-white/[0.06]'
+            }`}
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Keluar Sesi</span>
           </button>
         </div>
       </aside>
+
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 overflow-y-auto max-h-screen bg-[#000000]">
+      <main className="flex-1 overflow-y-auto max-h-screen bg-transparent">
         {/* Top Header Bar - Frosted Apple Minimal */}
-        <header className="px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-10 bg-black/50 border-b border-white/[0.08] backdrop-blur-2xl">
+        <header
+          className={`px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-10 border-b backdrop-blur-2xl transition-colors ${
+            isLight
+              ? 'bg-white/60 border-black/[0.08]'
+              : 'bg-black/50 border-white/[0.08]'
+          }`}
+        >
           {/* Sociabuzz Quick Copy Box */}
           <div className="apple-card px-3.5 py-1.5 rounded-full flex items-center gap-2.5">
-            <span className="px-2 py-0.5 text-[10px] rounded-full font-medium tracking-tight bg-[#ffd60a]/20 text-[#ffd60a] border border-[#ffd60a]/30">
+            <span className="px-2 py-0.5 text-[10px] rounded-full font-medium tracking-tight bg-[#ffd60a]/20 text-[#b45309] dark:text-[#ffd60a] border border-[#ffd60a]/30">
               Sociabuzz
             </span>
-            <span className="text-xs font-mono truncate max-w-[180px] sm:max-w-xs text-zinc-400">
+            <span
+              className={`text-xs font-mono truncate max-w-[180px] sm:max-w-xs ${
+                isLight ? 'text-zinc-600' : 'text-zinc-400'
+              }`}
+            >
               {sociabuzzUrl}
             </span>
             <button
               onClick={() => copyToClipboard(sociabuzzUrl, 'sociabuzz')}
-              className="ml-1 px-2.5 py-1 rounded-full text-[10px] font-medium tracking-tight flex items-center gap-1 transition-all cursor-pointer bg-white/[0.08] hover:bg-white/[0.14] text-zinc-300"
+              className={`ml-1 px-2.5 py-1 rounded-full text-[10px] font-medium tracking-tight flex items-center gap-1 transition-all cursor-pointer ${
+                isLight
+                  ? 'bg-black/[0.06] hover:bg-black/[0.1] text-zinc-700'
+                  : 'bg-white/[0.08] hover:bg-white/[0.14] text-zinc-300'
+              }`}
             >
-              {copiedDonation ? <Check className="w-3 h-3 text-[#30d158]" /> : <Copy className="w-3 h-3" />}
+              {copiedDonation ? <Check className="w-3 h-3 text-[#16a34a]" /> : <Copy className="w-3 h-3" />}
               <span>{copiedDonation ? 'Copied' : 'Copy'}</span>
             </button>
           </div>
 
-          {/* Quick Header Actions */}
+          {/* Quick Header Actions + Background Theme Switcher */}
           <div className="flex items-center gap-2 flex-wrap">
+            <ThemeHeaderControls compact={false} />
+
             <button
               onClick={() => setShowSimModal(true)}
               className="apple-button-secondary py-1.5 px-3.5 text-xs rounded-full flex items-center gap-1.5 cursor-pointer"
             >
-              <Zap className="w-3.5 h-3.5 text-[#ffd60a]" />
+              <Zap className="w-3.5 h-3.5 text-[#d97706] dark:text-[#ffd60a]" />
               <span>Simulasi Webhook</span>
             </button>
 

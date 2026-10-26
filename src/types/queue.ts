@@ -1,6 +1,7 @@
 export type MembershipType = 'REGULAR' | 'VIP' | 'VVIP';
 export type PlayerStatus = 'QUEUED' | 'PLAYING' | 'DONE' | 'SKIPPED' | 'CANCELLED';
 export type DonationStatus = 'UNCLAIMED' | 'CLAIMED' | 'REFUNDED';
+export type UserRole = 'admin' | 'streamer';
 
 export interface Player {
   id: string;
@@ -36,10 +37,13 @@ export interface Donation {
 
 export interface UserProfile {
   id: string;
+  auth_user_id?: string;
   email: string;
   name: string;
   avatar_url?: string;
+  role: UserRole;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface OverlayToken {
@@ -74,7 +78,7 @@ export interface OverlaySettings {
   live_badge_text: string;
   hide_playing_in_overlay?: boolean;
   dashboard_ui_theme?: 'neobrutalism' | 'dark';
-  
+
   // Custom appearance options
   panel_width?: number; // default 440
   show_id?: boolean;
@@ -87,6 +91,23 @@ export interface OverlaySettings {
   custom_text_color?: string;
   custom_accent_color?: string;
 
+  // Platform promotion on overlay
+  allow_promotion?: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlatformPromotion {
+  id: string;
+  enabled: boolean;
+  title: string;
+  description: string;
+  image_url?: string;
+  link_url: string;
+  position: 'overlay_bottom' | 'overlay_top';
+  start_at?: string;
+  end_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -118,3 +139,11 @@ export interface QueueStats {
   next_player: QueueItem | null;
 }
 
+export interface PlatformAnalytics {
+  total_streamers: number;
+  active_streamers: number;
+  total_queue_players: number;
+  total_donations_count: number;
+  total_donations_amount: number;
+  total_webhook_events: number;
+}

@@ -316,6 +316,9 @@ float vnoise(vec2 p) {
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), u.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), u.x), u.y);
 }
+float vnoise(float x, float y) {
+  return vnoise(vec2(x, y));
+}
 float fbm(vec2 p) {
   float v = 0.0;
   float a = 0.5;
@@ -426,7 +429,7 @@ void main() {
     vec2 p = uv + uShift * (0.25 + depth) + vec2(0.0, uDrop * (1.0 - depth));
     float x = p.x * aspect;
     float n = fbm(vec2(x * L.z + uSeed * 1.37 + fi * 7.31, fi * 3.7 + uSeed * 0.71));
-    float ridged = 1.0 - abs(2.0 * vnoise(vec2(x * L.z * 2.3 + fi * 5.1 + uSeed), fi + uSeed * 0.3) - 1.0);
+    float ridged = 1.0 - abs(2.0 * vnoise(vec2(x * L.z * 2.3 + fi * 5.1 + uSeed, fi + uSeed * 0.3)) - 1.0);
     float h = L.x + L.y * ((n - 0.5) * 2.0 + (ridged - 0.5) * 0.35);
 
     float bleed = 0.0025 + 0.004 * vnoise(vec2(x * 40.0, fi * 9.0));
@@ -453,10 +456,38 @@ void main() {
       float painted = 1.0 - smoothstep(edge - 0.035, edge + 0.035, uv.x);
       col = mix(col, uInk, clamp(below * dens * painted, 0.0, 1.0));
     }
+
+    // Visible Sumi-e mist drifting between mountain layers and across the valleys
+    if (uMist > 0.0) {
+      float mistX = x * (1.1 + depth * 0.7) + uTime * uDrift * 3.0 * (0.6 + depth * 0.4) + fi * 4.3;
+      float mistY = p.y * 3.6 + fi * 2.1 + uSeed * 0.6;
+      float fogVapor = smoothstep(0.32, 0.76, fbm3(vec2(mistX, mistY)));
+
+      // Height distribution: hugs the valley and floats up to the ridge crest
+      float fogBand = smoothstep(h - 0.26 - depth * 0.08, h - 0.01, p.y) * smoothstep(h + 0.12, h - 0.05, p.y);
+      float valleyBlanket = smoothstep(h + 0.02, h - 0.22, p.y) * 0.8;
+      float mistIntensity = fogVapor * (fogBand + valleyBlanket) * uMist * uPaintAll;
+
+      // In dark mode: luminous moonlit silver-white mist with subtle depth
+      // In light mode: pure soft white/ivory mist wash
+      vec3 mistTone = uMoon > 0.5 ? vec3(0.92, 0.94, 1.0) : vec3(0.98, 0.98, 0.99);
+      col = mix(col, mistTone, clamp(mistIntensity * 0.85, 0.0, 0.88));
+    }
+
     // Birds crossing along the ridge
     if (i == uBirdLayer && uBirdCount > 0) {
       col = mix(col, uInk, birdInk(uv, aspect) * 0.85 * uInkScale);
     }
+  }
+
+  // Floating low-altitude mist blanket across the lower valley floor
+  if (uMist > 0.0) {
+    float basinY = uv.y + uDrop;
+    float basinDrift = uv.x * aspect * 1.3 + uTime * uDrift * 3.5 + uSeed * 0.4;
+    float basinNoise = fbm3(vec2(basinDrift, basinY * 4.2));
+    float basinFog = smoothstep(0.35, 0.78, basinNoise) * smoothstep(0.60, 0.15, basinY);
+    vec3 foreMistTone = uMoon > 0.5 ? vec3(0.90, 0.93, 1.0) : vec3(0.99, 0.99, 1.0);
+    col = mix(col, foreMistTone, clamp(basinFog * uMist * 0.75 * uPaintAll, 0.0, 0.85));
   }
 
   col += (hash2(uv * uResolution * 0.5) - 0.5) * uGrain * 0.08;
@@ -696,6 +727,8 @@ class RidgesGL {
 const cn = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(' ')
 
 export interface InkRidgesProps {
+  themeMode?: 'dark' | 'light'
+  paperColor?: string
   layers?: number
   seed?: number
   horizon?: number
@@ -722,25 +755,27 @@ export interface InkRidgesProps {
 }
 
 export default function InkRidges({
+  themeMode,
+  paperColor,
   layers = 4,
   seed = 7,
   horizon = 0.62,
-  mist = 0.6,
-  drift = 0.08,
-  parallax = 0.04,
-  paintIn = 2200,
+  mist = 0.65,
+  drift = 0.035,
+  parallax = 0,
+  paintIn = 2000,
   sun = true,
   sunPosition = [0.78, 0.74],
   sunSize = 0.07,
-  sunColor = '#ff453a',
+  sunColor = '#D4AF37',
   moon = 'auto',
-  scrollDepth = 0.35,
+  scrollDepth = 0.15,
   inkColor,
-  grain = 0.25,
-  clouds = 0.35,
-  glow = 0.45,
-  birds = 5,
-  birdsEvery = 6,
+  grain = 0.15,
+  clouds = 0.25,
+  glow = 0.30,
+  birds = 3,
+  birdsEvery = 14,
   dprCap = 1.5,
   label,
   className,
@@ -750,6 +785,8 @@ export default function InkRidges({
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const [glOk, setGlOk] = React.useState(true)
   const opts = React.useRef({
+    themeMode,
+    paperColor,
     layers,
     horizon,
     mist,
@@ -771,6 +808,8 @@ export default function InkRidges({
     birdsEvery,
   })
   opts.current = {
+    themeMode,
+    paperColor,
     layers,
     horizon,
     mist,
@@ -827,10 +866,28 @@ export default function InkRidges({
 
     const theme = () => {
       const o = opts.current
-      paper = resolveColor(root, 'backgroundColor')
-      inkRgb = (o.inkColor && resolveCssColor(o.inkColor)) || resolveColor(root, 'color')
-      night = moonFor(o.moon, paper)
-      sunRgb = (!night && o.sunColor && resolveCssColor(o.sunColor)) || inkRgb
+      if (o.paperColor) {
+        paper = resolveCssColor(o.paperColor) || [1, 1, 1]
+      } else if (o.themeMode === 'light') {
+        paper = [0.965, 0.965, 0.978]
+      } else if (o.themeMode === 'dark') {
+        paper = [0.032, 0.032, 0.042]
+      } else {
+        paper = resolveColor(root, 'backgroundColor')
+      }
+
+      if (o.inkColor) {
+        inkRgb = resolveCssColor(o.inkColor) || [0.1, 0.1, 0.1]
+      } else if (o.themeMode === 'light') {
+        inkRgb = [0.11, 0.11, 0.15]
+      } else if (o.themeMode === 'dark') {
+        inkRgb = [0.93, 0.93, 0.97]
+      } else {
+        inkRgb = resolveColor(root, 'color')
+      }
+
+      night = o.themeMode ? o.themeMode === 'dark' : moonFor(o.moon, paper)
+      sunRgb = (!night && o.sunColor && resolveCssColor(o.sunColor)) || (night ? [0.95, 0.95, 1.0] : inkRgb)
     }
 
     const kick = () => {
@@ -854,8 +911,15 @@ export default function InkRidges({
       const p = o.paintIn <= 0 ? 1 : clamp01((now - paintStart) / o.paintIn)
 
       time += dt
-      ptr.x = damp(ptr.x, ptr.tx, 5, dt)
-      ptr.y = damp(ptr.y, ptr.ty, 5, dt)
+      if (o.parallax <= 0) {
+        ptr.x = 0
+        ptr.y = 0
+        ptr.tx = 0
+        ptr.ty = 0
+      } else {
+        ptr.x = damp(ptr.x, ptr.tx, 5, dt)
+        ptr.y = damp(ptr.y, ptr.ty, 5, dt)
+      }
 
       const n = Math.max(1, Math.min(MAX_LAYERS, Math.round(o.layers)))
       const ridges = Array.from({ length: n }, (_, i) => layerAt(i, n, o.horizon))
@@ -869,7 +933,7 @@ export default function InkRidges({
         horizon: o.horizon,
         seed: o.seed,
         aspect,
-        shift: [ptr.x, ptr.y],
+        shift: o.parallax > 0 ? [ptr.x, ptr.y] : [0, 0],
         drop,
       }
 
@@ -907,7 +971,7 @@ export default function InkRidges({
         layers: ridges,
         paint: ridges.map((_, i) => ink(paintAt(p, i, n))),
         paintAll: p,
-        shift: [ptr.x, ptr.y],
+        shift: o.parallax > 0 ? [ptr.x, ptr.y] : [0, 0],
         paper,
         ink: inkRgb,
         sunColor: sunRgb,
@@ -949,7 +1013,13 @@ export default function InkRidges({
     // Window-wide parallax so moving the mouse anywhere on the screen creates silky fluid mountain movement
     const onPointer = (e: MouseEvent | PointerEvent) => {
       const o = opts.current
-      if (o.parallax <= 0) return
+      if (o.parallax <= 0) {
+        ptr.tx = 0
+        ptr.ty = 0
+        ptr.x = 0
+        ptr.y = 0
+        return
+      }
       const r = root.getBoundingClientRect()
       ptr.tx = ((e.clientX - r.left) / Math.max(1, r.width) - 0.5) * o.parallax
       ptr.ty = -((e.clientY - r.top) / Math.max(1, r.height) - 0.5) * o.parallax
@@ -1043,7 +1113,7 @@ export default function InkRidges({
 
   React.useEffect(() => {
     ctl.current.retheme()
-  }, [inkColor, sunColor, moon])
+  }, [inkColor, sunColor, moon, themeMode, paperColor])
 
   return (
     <div ref={rootRef} data-ink-ridges="" className={cn('relative isolate overflow-hidden', className)}>

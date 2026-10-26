@@ -140,3 +140,89 @@ html, body {
     inset 0 1px 0 rgba(255, 255, 255, 0.25);
   pointer-events: none;
 }
+
+/* Light Theme ("Cerah") Overrides for Ink Ridges Background */
+.theme-light {
+  color-scheme: light;
+}
+
+.theme-light .apple-glass {
+  background: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 12px 32px -8px rgba(0, 0, 0, 0.08);
+  color: #18181b;
+}
+
+.theme-light .apple-card {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px -6px rgba(0, 0, 0, 0.06);
+  color: #18181b;
+}
+
+.theme-light .apple-card:hover {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
+.theme-light .apple-button-primary {
+  background: #18181b;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.theme-light .apple-button-primary:hover {
+  background: #27272a;
+}
+
+.theme-light .apple-button-primary:active {
+  background: #09090b;
+}
+
+.theme-light .apple-button-secondary {
+  background: rgba(0, 0, 0, 0.05);
+  color: #18181b;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+}
+
+.theme-light .apple-button-secondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .apple-input {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  color: #18181b;
+}
+
+.theme-light .apple-input:focus {
+  border-color: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+}
+
+.theme-light .rb-frame {
+  box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.15), 0 8px 24px -8px rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.theme-light .rb-frame-rim {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.theme-light .rb-tile-rim {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}

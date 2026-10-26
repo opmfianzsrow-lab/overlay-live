@@ -12,6 +12,8 @@ import type {
   MembershipType,
   UserProfile,
   OverlayToken,
+  PlatformPromotion,
+  PlatformAnalytics,
 } from '../types/queue.ts';
 
 export interface DatabaseSchema {
@@ -24,203 +26,46 @@ export interface DatabaseSchema {
   webhook_events: (WebhookEvent & { user_id: string })[];
   activity_logs: (ActivityLog & { user_id: string })[];
   sessions: Record<string, { user_id: string; expires_at: number }>;
+  platform_promotion?: PlatformPromotion;
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
 
-function generateToken(length = 12): string {
-  return crypto.randomBytes(length).toString('base64url').replace(/[-_]/g, 'x').slice(0, length);
+/**
+ * Generate cryptographically random, unguessable token
+ * Format: 1v1_<24 hex characters>
+ */
+export function generateSecureOverlayToken(): string {
+  return '1v1_' + crypto.randomBytes(12).toString('hex');
+}
+
+function generateRandomKey(prefix = 'sb_', bytes = 8): string {
+  return prefix + crypto.randomBytes(bytes).toString('hex');
 }
 
 function getDefaultInitialData(): DatabaseSchema {
   const now = new Date().toISOString();
-  const demoUserId = 'usr_demo';
-  const demoToken = '1v1_' + generateToken(8);
-  const demoWebhookKey = 'sb_wh_' + generateToken(10);
-  const demoWebhookSecret = 'sb_sec_' + generateToken(16);
-
-  const demoUser: UserProfile = {
-    id: demoUserId,
-    email: 'hfiz22379@gmail.com',
-    name: 'Streamer Pro Demo',
-    avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=streamer',
-    created_at: now,
-  };
-
-  const initialPlayers: (Player & { user_id: string })[] = [
-    {
-      id: 'p-1',
-      user_id: demoUserId,
-      name: 'GALANG',
-      game_id: '12933886421',
-      membership: 'VVIP',
-      status: 'PLAYING',
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: 'p-2',
-      user_id: demoUserId,
-      name: 'PENGUSAHA',
-      game_id: '17456782197',
-      membership: 'VVIP',
-      status: 'QUEUED',
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: 'p-3',
-      user_id: demoUserId,
-      name: 'JOKO W',
-      game_id: '1849448577',
-      membership: 'VIP',
-      status: 'QUEUED',
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: 'p-4',
-      user_id: demoUserId,
-      name: 'LIONEL',
-      game_id: '8766413615',
-      membership: 'VIP',
-      status: 'QUEUED',
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: 'p-5',
-      user_id: demoUserId,
-      name: 'RIZKY PRO',
-      game_id: '9928374112',
-      membership: 'REGULAR',
-      status: 'QUEUED',
-      created_at: now,
-      updated_at: now,
-    },
-  ];
-
-  const initialQueue = [
-    { id: 'q-1', user_id: demoUserId, player_id: 'p-1', position: 1, status: 'PLAYING' as const, joined_at: now },
-    { id: 'q-2', user_id: demoUserId, player_id: 'p-2', position: 2, status: 'QUEUED' as const, joined_at: now },
-    { id: 'q-3', user_id: demoUserId, player_id: 'p-3', position: 3, status: 'QUEUED' as const, joined_at: now },
-    { id: 'q-4', user_id: demoUserId, player_id: 'p-4', position: 4, status: 'QUEUED' as const, joined_at: now },
-    { id: 'q-5', user_id: demoUserId, player_id: 'p-5', position: 5, status: 'QUEUED' as const, joined_at: now },
-  ];
-
-  const initialDonations: (Donation & { user_id: string })[] = [
-    {
-      id: 'don-1',
-      user_id: demoUserId,
-      external_donation_id: 'SB-882910',
-      donor_name: 'GALANG',
-      amount: 50000,
-      message: '1v1 bang, pake hero andalan!',
-      status: 'CLAIMED',
-      claimed_by_player_id: 'p-1',
-      claimed_at: now,
-      created_at: now,
-    },
-    {
-      id: 'don-2',
-      user_id: demoUserId,
-      external_donation_id: 'SB-882911',
-      donor_name: 'PENGUSAHA',
-      amount: 50000,
-      message: 'Spesial VVIP slot',
-      status: 'CLAIMED',
-      claimed_by_player_id: 'p-2',
-      claimed_at: now,
-      created_at: now,
-    },
-    {
-      id: 'don-3',
-      user_id: demoUserId,
-      external_donation_id: 'SB-882912',
-      donor_name: 'JOKO W',
-      amount: 25000,
-      message: 'Salam 1v1 gaskeun',
-      status: 'CLAIMED',
-      claimed_by_player_id: 'p-3',
-      claimed_at: now,
-      created_at: now,
-    },
-    {
-      id: 'don-4',
-      user_id: demoUserId,
-      external_donation_id: 'SB-882913',
-      donor_name: 'LIONEL',
-      amount: 25000,
-      message: 'Gas main sama streamer',
-      status: 'CLAIMED',
-      claimed_by_player_id: 'p-4',
-      claimed_at: now,
-      created_at: now,
-    },
-  ];
-
-  const initialLogs: (ActivityLog & { user_id: string })[] = [
-    { id: 'log-1', user_id: demoUserId, text: 'GALANG sedang bermain (LIVE)', type: 'play', timestamp: now },
-    { id: 'log-2', user_id: demoUserId, text: 'PENGUSAHA bergabung ke antrian #2 (VVIP)', type: 'join', timestamp: now },
-    { id: 'log-3', user_id: demoUserId, text: 'JOKO W bergabung ke antrian #3 (VIP)', type: 'join', timestamp: now },
-    { id: 'log-4', user_id: demoUserId, text: 'Donasi masuk dari GALANG sebesar Rp 50.000', type: 'donation', timestamp: now },
-  ];
-
-  const demoSettings: OverlaySettings = {
-    id: 'settings_' + demoUserId,
-    user_id: demoUserId,
-    streamer_token: demoToken,
-    webhook_key: demoWebhookKey,
-    webhook_secret: demoWebhookSecret,
-    title: 'ANTRIAN BY1',
-    theme: 'obsidian',
-    font_size: 'medium',
-    max_visible_players: 5,
-    animation: 'smooth',
-    opacity: 96,
-    card_size: 'normal',
-    spacing: 8,
-    sociabuzz_url: 'https://sociabuzz.com/streamerkeren',
-    min_donation: 10000,
-    vip_min_donation: 25000,
-    vvip_min_donation: 50000,
-    max_queue_limit: 50,
-    sound_alert: true,
-    allow_free_queue: false,
-    live_badge_text: 'LIVE',
-    hide_playing_in_overlay: false,
-    dashboard_ui_theme: 'neobrutalism',
-    panel_width: 440,
-    show_id: true,
-    show_vip_badge: true,
-    show_live_badge: true,
-    border_radius: 22,
-    enable_animation: true,
-    animation_speed: 'normal',
-    created_at: now,
-    updated_at: now,
-  };
-
   return {
-    users: [demoUser],
-    overlay_tokens: [
-      {
-        id: 'tok_demo',
-        user_id: demoUserId,
-        token: demoToken,
-        created_at: now,
-      },
-    ],
-    settings: {
-      [demoUserId]: demoSettings,
-    },
-    players: initialPlayers,
-    queue: initialQueue,
-    donations: initialDonations,
+    users: [],
+    overlay_tokens: [],
+    settings: {},
+    players: [],
+    queue: [],
+    donations: [],
     webhook_events: [],
-    activity_logs: initialLogs,
+    activity_logs: [],
     sessions: {},
+    platform_promotion: {
+      id: 'promo_default',
+      enabled: false,
+      title: 'STREAMER PRO OVERLAY 1V1',
+      description: 'Ingin overlay live antrian interaktif seperti ini di stream kamu? Bikin akun gratis sekarang!',
+      link_url: 'https://antrian-streamer.app',
+      position: 'overlay_bottom',
+      created_at: now,
+      updated_at: now,
+    },
   };
 }
 
@@ -239,25 +84,59 @@ class Database {
       if (fs.existsSync(DB_FILE)) {
         const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
         
-        // Multi-user migration check: if old single-user schema exists
-        if (!raw.users || !Array.isArray(raw.users)) {
-          console.log('[Database] Migrating legacy single-user data to multi-user schema...');
-          const migrated = getDefaultInitialData();
-          if (raw.settings && typeof raw.settings === 'object' && !Array.isArray(raw.settings)) {
-            const demoUserId = 'usr_demo';
-            migrated.settings[demoUserId] = {
-              ...migrated.settings[demoUserId],
-              ...raw.settings,
-              user_id: demoUserId,
-            };
-            const token = raw.settings.streamer_token || migrated.settings[demoUserId].streamer_token;
-            migrated.overlay_tokens[0].token = token;
-          }
-          this.saveData(migrated);
-          return migrated;
+        // Clean out legacy demo user if present in migration
+        if (Array.isArray(raw.users)) {
+          raw.users = raw.users.filter((u: UserProfile) => u.id !== 'usr_demo');
+        } else {
+          raw.users = [];
         }
 
-        // Ensure sessions and default users exist
+        if (Array.isArray(raw.overlay_tokens)) {
+          raw.overlay_tokens = raw.overlay_tokens.filter((t: OverlayToken) => t.user_id !== 'usr_demo');
+        } else {
+          raw.overlay_tokens = [];
+        }
+
+        if (raw.settings && raw.settings['usr_demo']) {
+          delete raw.settings['usr_demo'];
+        }
+
+        if (Array.isArray(raw.players)) {
+          raw.players = raw.players.filter((p: Player & { user_id: string }) => p.user_id !== 'usr_demo');
+        }
+
+        if (Array.isArray(raw.queue)) {
+          raw.queue = raw.queue.filter((q: { user_id: string }) => q.user_id !== 'usr_demo');
+        }
+
+        if (Array.isArray(raw.donations)) {
+          raw.donations = raw.donations.filter((d: Donation & { user_id: string }) => d.user_id !== 'usr_demo');
+        }
+
+        if (!raw.sessions) raw.sessions = {};
+        if (!raw.platform_promotion) {
+          raw.platform_promotion = {
+            id: 'promo_default',
+            enabled: false,
+            title: 'STREAMER PRO OVERLAY 1V1',
+            description: 'Ingin overlay live antrian interaktif seperti ini di stream kamu? Bikin akun gratis sekarang!',
+            link_url: 'https://antrian-streamer.app',
+            position: 'overlay_bottom',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        }
+
+        return raw;
+      }
+    } catch (e) {
+      console.error('Failed to load db.json, initializing clean production default', e);
+    }
+
+    const defaultData = getDefaultInitialData();
+    this.saveData(defaultData);
+    return defaultData;
+  }
         if (!raw.sessions) raw.sessions = {};
         if (!raw.overlay_tokens) raw.overlay_tokens = [];
         return raw;
@@ -299,46 +178,57 @@ class Database {
     return this.data.users.find((u) => u.email.toLowerCase() === cleanEmail) || null;
   }
 
-  public findOrCreateGoogleUser(params: {
+  public getUserByAuthId(authUserId: string): UserProfile | null {
+    if (!authUserId) return null;
+    return this.data.users.find((u) => u.auth_user_id === authUserId) || null;
+  }
+
+  public findOrCreateSupabaseUser(params: {
+    auth_user_id: string;
     email: string;
-    name: string;
+    name?: string;
     avatar_url?: string;
   }): { user: UserProfile; token: string; isNew: boolean } {
     const cleanEmail = params.email.toLowerCase().trim();
-    let existing = this.getUserByEmail(cleanEmail);
+    let existing = this.getUserByAuthId(params.auth_user_id) || this.getUserByEmail(cleanEmail);
     const now = new Date().toISOString();
 
     if (existing) {
-      // Update name/avatar if provided
-      existing.name = params.name || existing.name;
+      if (!existing.auth_user_id) {
+        existing.auth_user_id = params.auth_user_id;
+      }
+      if (params.name) existing.name = params.name;
       if (params.avatar_url) existing.avatar_url = params.avatar_url;
+      existing.updated_at = now;
+      this.ensureUserSettings(existing.id);
       this.saveData();
 
-      // Ensure user has settings and overlay token
-      this.ensureUserSettings(existing.id);
       const sessionToken = this.createSession(existing.id);
       return { user: existing, token: sessionToken, isNew: false };
     }
 
-    // Create new user profile
-    const newUserId = 'usr_' + crypto.randomUUID().slice(0, 8);
+    // Role: first user on the platform gets admin rights, subsequent users are streamers
+    const role: UserRole = this.data.users.length === 0 ? 'admin' : 'streamer';
+    const newUserId = 'usr_' + crypto.randomBytes(6).toString('hex');
     const newUser: UserProfile = {
       id: newUserId,
+      auth_user_id: params.auth_user_id,
       email: cleanEmail,
       name: params.name || cleanEmail.split('@')[0],
-      avatar_url: params.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${newUserId}`,
+      avatar_url: params.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanEmail)}`,
+      role,
       created_at: now,
+      updated_at: now,
     };
 
     this.data.users.push(newUser);
 
-    // Initialize user overlay token & settings
-    const streamerToken = '1v1_' + generateToken(8);
-    const webhookKey = 'sb_wh_' + generateToken(10);
-    const webhookSecret = 'sb_sec_' + generateToken(16);
+    const streamerToken = generateSecureOverlayToken();
+    const webhookKey = generateRandomKey('sb_wh_', 6);
+    const webhookSecret = generateRandomKey('sb_sec_', 10);
 
     this.data.overlay_tokens.push({
-      id: 'tok_' + crypto.randomUUID().slice(0, 8),
+      id: 'tok_' + crypto.randomBytes(6).toString('hex'),
       user_id: newUserId,
       token: streamerToken,
       created_at: now,
@@ -367,7 +257,7 @@ class Database {
       allow_free_queue: false,
       live_badge_text: 'LIVE',
       hide_playing_in_overlay: false,
-      dashboard_ui_theme: 'neobrutalism',
+      dashboard_ui_theme: 'dark',
       panel_width: 440,
       show_id: true,
       show_vip_badge: true,
@@ -375,15 +265,29 @@ class Database {
       border_radius: 22,
       enable_animation: true,
       animation_speed: 'normal',
+      allow_promotion: false,
       created_at: now,
       updated_at: now,
     };
 
-    this.logActivity(newUserId, `Akun streamer baru berhasil didaftarkan via Google (${cleanEmail})`, 'edit');
+    this.logActivity(newUserId, `Akun streamer baru terdaftar via Google OAuth (${cleanEmail})`, 'edit');
     this.saveData();
 
     const sessionToken = this.createSession(newUserId);
     return { user: newUser, token: sessionToken, isNew: true };
+  }
+
+  public findOrCreateGoogleUser(params: {
+    email: string;
+    name: string;
+    avatar_url?: string;
+  }): { user: UserProfile; token: string; isNew: boolean } {
+    return this.findOrCreateSupabaseUser({
+      auth_user_id: 'legacy_' + crypto.createHash('md5').update(params.email).digest('hex'),
+      email: params.email,
+      name: params.name,
+      avatar_url: params.avatar_url,
+    });
   }
 
   public createSession(userId: string): string {
@@ -419,19 +323,21 @@ class Database {
 
   public getUserIdByOverlayToken(token: string): string | null {
     if (!token) return null;
-    if (token === 'preview') {
-      return this.data.users[0]?.id || 'usr_demo';
-    }
 
-    // Direct match in overlay_tokens
-    const foundToken = this.data.overlay_tokens.find(
+    // Look up in overlay_tokens table for unrevoked token
+    const activeToken = this.data.overlay_tokens.find(
       (t) => t.token === token && !t.revoked_at
     );
-    if (foundToken) return foundToken.user_id;
+    if (activeToken) return activeToken.user_id;
 
-    // Direct match in user settings
+    // Also match current user settings if not revoked
     for (const [userId, settings] of Object.entries(this.data.settings)) {
-      if (settings.streamer_token === token) return userId;
+      if (settings.streamer_token === token) {
+        const isRevoked = this.data.overlay_tokens.some(
+          (t) => t.token === token && t.revoked_at
+        );
+        if (!isRevoked) return userId;
+      }
     }
 
     return null;
@@ -452,19 +358,19 @@ class Database {
   }
 
   public regenerateStreamerToken(userId: string): string {
-    const newToken = '1v1_' + generateToken(8);
+    const newToken = generateSecureOverlayToken();
     const now = new Date().toISOString();
 
     // Revoke old tokens
     this.data.overlay_tokens.forEach((t) => {
-      if (t.user_id === userId) {
+      if (t.user_id === userId && !t.revoked_at) {
         t.revoked_at = now;
       }
     });
 
-    // Create new token
+    // Create new active token
     this.data.overlay_tokens.push({
-      id: 'tok_' + crypto.randomUUID().slice(0, 8),
+      id: 'tok_' + crypto.randomBytes(6).toString('hex'),
       user_id: userId,
       token: newToken,
       created_at: now,
@@ -475,8 +381,55 @@ class Database {
     this.data.settings[userId].updated_at = now;
     this.saveData();
 
-    this.logActivity(userId, `Token link OBS Overlay diperbarui menjadi ${newToken}`, 'edit');
+    this.logActivity(userId, `Link OBS Overlay digenerate ulang (Token lama ${newToken.slice(0, 8)}... dicabut)`, 'edit');
     return newToken;
+  }
+
+  /* ==========================================================================
+     PLATFORM PROMOTIONS & ADMIN ANALYTICS
+     ========================================================================== */
+
+  public getPlatformAnalytics(): PlatformAnalytics {
+    const totalStreamers = this.data.users.length;
+    const activeStreamers = new Set(this.data.queue.map((q) => q.user_id)).size;
+    const totalPlayers = this.data.players.length;
+    const totalDonationsCount = this.data.donations.length;
+    const totalDonationsAmount = this.data.donations.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalWebhookEvents = this.data.webhook_events.length;
+
+    return {
+      total_streamers: totalStreamers,
+      active_streamers: activeStreamers,
+      total_queue_players: totalPlayers,
+      total_donations_count: totalDonationsCount,
+      total_donations_amount: totalDonationsAmount,
+      total_webhook_events: totalWebhookEvents,
+    };
+  }
+
+  public getPlatformPromotion(): PlatformPromotion {
+    return this.data.platform_promotion || {
+      id: 'promo_default',
+      enabled: false,
+      title: 'STREAMER PRO OVERLAY 1V1',
+      description: 'Ingin overlay live antrian interaktif seperti ini di stream kamu? Bikin akun gratis sekarang!',
+      link_url: 'https://antrian-streamer.app',
+      position: 'overlay_bottom',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  public updatePlatformPromotion(promo: Partial<PlatformPromotion>): PlatformPromotion {
+    const current = this.getPlatformPromotion();
+    const updated: PlatformPromotion = {
+      ...current,
+      ...promo,
+      updated_at: new Date().toISOString(),
+    };
+    this.data.platform_promotion = updated;
+    this.saveData();
+    return updated;
   }
 
   /* ==========================================================================
@@ -486,9 +439,9 @@ class Database {
   private ensureUserSettings(userId: string): OverlaySettings {
     if (!this.data.settings[userId]) {
       const now = new Date().toISOString();
-      const token = '1v1_' + generateToken(8);
-      const webhookKey = 'sb_wh_' + generateToken(10);
-      const webhookSecret = 'sb_sec_' + generateToken(16);
+      const token = generateSecureOverlayToken();
+      const webhookKey = generateRandomKey('sb_wh_', 6);
+      const webhookSecret = generateRandomKey('sb_sec_', 10);
 
       this.data.settings[userId] = {
         id: 'settings_' + userId,
@@ -513,7 +466,7 @@ class Database {
         allow_free_queue: false,
         live_badge_text: 'LIVE',
         hide_playing_in_overlay: false,
-        dashboard_ui_theme: 'neobrutalism',
+        dashboard_ui_theme: 'dark',
         panel_width: 440,
         show_id: true,
         show_vip_badge: true,
@@ -521,12 +474,13 @@ class Database {
         border_radius: 22,
         enable_animation: true,
         animation_speed: 'normal',
+        allow_promotion: false,
         created_at: now,
         updated_at: now,
       };
 
       this.data.overlay_tokens.push({
-        id: 'tok_' + crypto.randomUUID().slice(0, 8),
+        id: 'tok_' + crypto.randomBytes(6).toString('hex'),
         user_id: userId,
         token: token,
         created_at: now,

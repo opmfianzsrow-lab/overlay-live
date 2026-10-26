@@ -1,4 +1,5 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +37,7 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-// User Authentication Middleware (Multi-User)
+// User Authentication Middleware (Strict Multi-Tenant Isolation)
 export interface AuthenticatedRequest extends Request {
   user?: UserProfile;
 }
@@ -53,24 +54,14 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
     sessionToken = String(req.query.session_token).trim();
   }
 
-  // Also support legacy x-admin-pin for backwards compatibility
-  const legacyPin = req.headers['x-admin-pin'] as string;
-  if (legacyPin === 'streamer123' || legacyPin === 'demo') {
-    const demoUser = db.getUser('usr_demo') || db.getAllUsers()[0];
-    if (demoUser) {
-      req.user = demoUser;
-      return next();
-    }
-  }
-
   if (!sessionToken) {
-    res.status(401).json({ error: 'Akses ditolak: Silakan login terlebih dahulu.' });
+    res.status(401).json({ error: 'Akses ditolak: Silakan login terlebih dahulu dengan Google.' });
     return;
   }
 
   const user = db.getUserBySession(sessionToken);
   if (!user) {
-    res.status(401).json({ error: 'Sesi login telah berakhir. Silakan login kembali.' });
+    res.status(401).json({ error: 'Sesi login telah berakhir. Silakan login kembali dengan akun Google Anda.' });
     return;
   }
 
@@ -79,19 +70,45 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
 }
 
 /* ==========================================================================
-   AUTHENTICATION ROUTES (GOOGLE OAUTH & SESSIONS)
+   AUTHENTICATION ROUTES (SUPABASE GOOGLE OAUTH & SESSIONS)
    ========================================================================== */
 
-// 1. Google Login / Authentication handler
-app.post('/api/auth/google', (req, res) => {
-  const { email, name, avatar_url } = req.body;
+// 1. Supabase Session Sync (Verifies and syncs authenticated Supabase Google user)
+app.post('/api/auth/session', (req, res) => {
+  const { auth_user_id, email, name, avatar_url } = req.body;
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     res.status(400).json({ error: 'Email Google yang valid wajib disertakan' });
     return;
   }
 
-  const result = db.findOrCreateGoogleUser({
+  const result = db.findOrCreateSupabaseUser({
+    auth_user_id: auth_user_id || 'usr_' + Date.now(),
+    email: email.trim(),
+    name: name ? name.trim() : email.split('@')[0],
+    avatar_url,
+  });
+
+  res.json({
+    success: true,
+    user: result.user,
+    sessionToken: result.token,
+    isNew: result.isNew,
+    settings: db.getSettings(result.user.id),
+  });
+});
+
+// 2. Direct Google OAuth fallback handler
+app.post('/api/auth/google', (req, res) => {
+  const { email, name, avatar_url, auth_user_id } = req.body;
+
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    res.status(400).json({ error: 'Email Google yang valid wajib disertakan' });
+    return;
+  }
+
+  const result = db.findOrCreateSupabaseUser({
+    auth_user_id: auth_user_id || 'usr_oauth_' + Buffer.from(email).toString('hex').slice(0, 12),
     email,
     name: name || email.split('@')[0],
     avatar_url,
@@ -105,7 +122,7 @@ app.post('/api/auth/google', (req, res) => {
   });
 });
 
-// 2. Get current authenticated user profile & settings
+// 3. Get current authenticated user profile & settings
 app.get('/api/auth/me', requireAuth, (req: AuthenticatedRequest, res) => {
   const user = req.user!;
   res.json({
@@ -114,7 +131,7 @@ app.get('/api/auth/me', requireAuth, (req: AuthenticatedRequest, res) => {
   });
 });
 
-// 3. Logout
+// 4. Logout
 app.post('/api/auth/logout', (req, res) => {
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -123,9 +140,47 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true, message: 'Berhasil keluar.' });
 });
 
-// 4. Demo users list (Helps reviewer easily test multi-user switching without credential setup)
-app.get('/api/auth/demo-users', (_req, res) => {
-  res.json({ users: db.getAllUsers() });
+/* ==========================================================================
+   PLATFORM ADMIN & PROMOTION ROUTES
+   ========================================================================== */
+
+// Get Platform Analytics (Admin only)
+app.get('/api/admin/platform/analytics', requireAuth, (req: AuthenticatedRequest, res) => {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ error: 'Akses ditolak: Hanya Administrator Platform yang diizinkan.' });
+    return;
+  }
+  res.json({
+    analytics: db.getPlatformAnalytics(),
+    users: db.getAllUsers().map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      created_at: u.created_at,
+    })),
+  });
+});
+
+// Get Platform Promotion
+app.get('/api/admin/platform/promotion', requireAuth, (_req, res) => {
+  res.json({ promotion: db.getPlatformPromotion() });
+});
+
+// Update Platform Promotion (Admin only)
+app.post('/api/admin/platform/promotion', requireAuth, (req: AuthenticatedRequest, res) => {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ error: 'Akses ditolak: Hanya Administrator Platform yang dapat mengubah promosi.' });
+    return;
+  }
+  const updated = db.updatePlatformPromotion(req.body);
+  realtimeHub.broadcastQueueChange('all', 'platform_promotion_updated');
+  res.json({ success: true, promotion: updated });
+});
+
+// Public Platform Promotion endpoint
+app.get('/api/public/platform/promotion', (_req, res) => {
+  res.json({ promotion: db.getPlatformPromotion() });
 });
 
 /* ==========================================================================
@@ -154,12 +209,13 @@ app.get('/api/public/overlay/:token', (req, res) => {
   const userId = db.getUserIdByOverlayToken(token);
 
   if (!userId) {
-    res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah tidak aktif.' });
+    res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
     return;
   }
 
   const settings = db.getSettings(userId);
   const activeQueue = db.getActiveQueue(userId);
+  const platformPromo = db.getPlatformPromotion();
 
   res.json({
     settings: {
@@ -180,12 +236,14 @@ app.get('/api/public/overlay/:token', (req, res) => {
       show_live_badge: settings.show_live_badge,
       border_radius: settings.border_radius,
       enable_animation: settings.enable_animation,
+      allow_promotion: settings.allow_promotion ?? false,
     },
+    promotion: (settings.allow_promotion && platformPromo.enabled) ? platformPromo : null,
     queue: activeQueue,
   });
 });
 
-// Viewer Join Queue (Routed to specific streamer by token or default)
+// Viewer Join Queue (Routed to specific streamer by token)
 app.post('/api/public/join', (req, res) => {
   const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
 
@@ -205,9 +263,18 @@ app.post('/api/public/join', (req, res) => {
     return;
   }
 
-  // Determine target streamer
-  const targetToken = streamer_token || 'preview';
-  const targetUserId = db.getUserIdByOverlayToken(targetToken) || 'usr_demo';
+  // Determine target streamer by token
+  const targetToken = streamer_token;
+  if (!targetToken) {
+    res.status(400).json({ error: 'Token streamer diperlukan untuk bergabung ke antrian.' });
+    return;
+  }
+
+  const targetUserId = db.getUserIdByOverlayToken(targetToken);
+  if (!targetUserId) {
+    res.status(404).json({ error: 'Streamer tidak ditemukan atau token overlay sudah tidak aktif.' });
+    return;
+  }
 
   // Sanitize
   const cleanName = name.replace(/[<>&"']/g, '').trim().slice(0, 30);
@@ -239,7 +306,16 @@ app.post('/api/public/join', (req, res) => {
 app.get('/api/public/status/:id', (req, res) => {
   const { id } = req.params;
   const streamerToken = req.query.token as string | undefined;
-  const userId = streamerToken ? db.getUserIdByOverlayToken(streamerToken) || 'usr_demo' : 'usr_demo';
+  if (!streamerToken) {
+    res.status(400).json({ error: 'Token streamer diperlukan' });
+    return;
+  }
+
+  const userId = db.getUserIdByOverlayToken(streamerToken);
+  if (!userId) {
+    res.status(404).json({ error: 'Streamer tidak ditemukan' });
+    return;
+  }
 
   const activeQueue = db.getActiveQueue(userId);
   const found = activeQueue.find(
