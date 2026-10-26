@@ -169,15 +169,12 @@ export class SociabuzzService {
       const match = message.match(/(?:id|game\s*id|mlbb|ff|pubg)?\s*[:=\s]?\s*([0-9]{5,14}(?:\s*\(\d+\))?)/i);
       if (match && match[1]) {
         extractedGameId = match[1].trim();
-      } else {
-        // Fallback: If message has content, use it as in-game note/ID so player enters queue automatically
-        extractedGameId = message.slice(0, 30);
       }
     }
 
-    // If still no Game ID (e.g. message empty), fallback to donor name so no donation is left out of overlay
+    // Default to '-' if no Game ID provided by donor
     if (!extractedGameId) {
-      extractedGameId = donorName || `SB-${externalId.slice(-6)}`;
+      extractedGameId = '-';
     }
 
     let queueCreated = false;

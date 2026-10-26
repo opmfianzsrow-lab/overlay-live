@@ -11,6 +11,7 @@ import type {
   QueueStats,
   MembershipType,
   UserProfile,
+  UserRole,
   OverlayToken,
   PlatformPromotion,
   PlatformAnalytics,
@@ -131,18 +132,6 @@ class Database {
       }
     } catch (e) {
       console.error('Failed to load db.json, initializing clean production default', e);
-    }
-
-    const defaultData = getDefaultInitialData();
-    this.saveData(defaultData);
-    return defaultData;
-  }
-        if (!raw.sessions) raw.sessions = {};
-        if (!raw.overlay_tokens) raw.overlay_tokens = [];
-        return raw;
-      }
-    } catch (e) {
-      console.error('Failed to load db.json, initializing fresh default', e);
     }
 
     const defaultData = getDefaultInitialData();
@@ -270,7 +259,7 @@ class Database {
       updated_at: now,
     };
 
-    this.logActivity(newUserId, `Akun streamer baru terdaftar via Google OAuth (${cleanEmail})`, 'edit');
+    this.logActivity(newUserId, `Akun streamer baru terdaftar via Supabase Auth (${cleanEmail})`, 'edit');
     this.saveData();
 
     const sessionToken = this.createSession(newUserId);

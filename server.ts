@@ -3,6 +3,10 @@ import type { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/server/db.ts';
 import { sociabuzzService } from './src/server/sociabuzz.ts';
@@ -73,12 +77,12 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
    AUTHENTICATION ROUTES (SUPABASE GOOGLE OAUTH & SESSIONS)
    ========================================================================== */
 
-// 1. Supabase Session Sync (Verifies and syncs authenticated Supabase Google user)
+// 1. Supabase Session Sync (Verifies and syncs authenticated Supabase user)
 app.post('/api/auth/session', (req, res) => {
   const { auth_user_id, email, name, avatar_url } = req.body;
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
-    res.status(400).json({ error: 'Email Google yang valid wajib disertakan' });
+    res.status(400).json({ error: 'Email yang valid wajib disertakan' });
     return;
   }
 
@@ -95,30 +99,6 @@ app.post('/api/auth/session', (req, res) => {
     sessionToken: result.token,
     isNew: result.isNew,
     settings: db.getSettings(result.user.id),
-  });
-});
-
-// 2. Direct Google OAuth fallback handler
-app.post('/api/auth/google', (req, res) => {
-  const { email, name, avatar_url, auth_user_id } = req.body;
-
-  if (!email || typeof email !== 'string' || !email.includes('@')) {
-    res.status(400).json({ error: 'Email Google yang valid wajib disertakan' });
-    return;
-  }
-
-  const result = db.findOrCreateSupabaseUser({
-    auth_user_id: auth_user_id || 'usr_oauth_' + Buffer.from(email).toString('hex').slice(0, 12),
-    email,
-    name: name || email.split('@')[0],
-    avatar_url,
-  });
-
-  res.json({
-    success: true,
-    user: result.user,
-    sessionToken: result.token,
-    isNew: result.isNew,
   });
 });
 
@@ -345,10 +325,10 @@ function handleSociabuzzWebhook(req: Request, res: Response): void {
     (req.headers['x-streamer-key'] as string);
 
   // Identify target streamer
-  let targetUserId = streamerKey ? db.getUserIdByWebhookKey(streamerKey) : null;
+  const targetUserId = streamerKey ? db.getUserIdByWebhookKey(streamerKey) : null;
   if (!targetUserId) {
-    // If not found by key, try matching by first user / demo user
-    targetUserId = 'usr_demo';
+    res.status(404).json({ error: 'Streamer tidak ditemukan atau Webhook key/token tidak valid.' });
+    return;
   }
 
   const streamerSettings = db.getSettings(targetUserId);

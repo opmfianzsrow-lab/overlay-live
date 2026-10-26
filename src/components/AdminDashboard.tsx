@@ -44,6 +44,8 @@ import type {
   MembershipType,
   UserProfile,
   WebhookEvent,
+  PlatformAnalytics,
+  PlatformPromotion,
 } from '../types/queue';
 import { EditPlayerModal } from './modals/EditPlayerModal';
 import { AddPlayerModal } from './modals/AddPlayerModal';
@@ -59,7 +61,7 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-type TabType = 'dashboard' | 'queue' | 'donations' | 'overlay' | 'sociabuzz' | 'settings';
+type TabType = 'dashboard' | 'queue' | 'donations' | 'overlay' | 'sociabuzz' | 'settings' | 'admin';
 type UiThemeType = 'neobrutalism' | 'dark';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -109,6 +111,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // PIN change state
   const [newPin, setNewPin] = useState('');
   const [pinSuccess, setPinSuccess] = useState('');
+
+  // Platform Admin state
+  const [platformAnalytics, setPlatformAnalytics] = useState<PlatformAnalytics | null>(null);
+  const [registeredUsers, setRegisteredUsers] = useState<Array<{ id: string; email: string; name: string; role: string; created_at: string }>>([]);
+  const [promotionForm, setPromotionForm] = useState<PlatformPromotion>({
+    id: 'promo_global',
+    enabled: false,
+    title: '🔥 PRODUK TERBARU',
+    description: 'Cek produk dan promo eksklusif sekarang!',
+    image_url: '',
+    link_url: 'https://antrian1v1.com',
+    position: 'overlay_bottom',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  const [savingPromotion, setSavingPromotion] = useState(false);
 
   // Toast notification state (replaces window.alert and window.confirm for iframe compatibility)
   const [toast, setToast] = useState<{
@@ -192,9 +210,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [sessionToken, adminPin, onLogout]);
 
+  // Fetch admin platform data
+  const fetchAdminData = useCallback(async () => {
+    if (user?.role !== 'admin') return;
+    try {
+      const headers: Record<string, string> = {};
+      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+
+      const resAnalytics = await fetch('/api/admin/platform/analytics', { headers });
+      if (resAnalytics.ok) {
+        const data = await resAnalytics.json();
+        setPlatformAnalytics(data.analytics);
+        if (data.users) setRegisteredUsers(data.users);
+      }
+
+      const resPromo = await fetch('/api/admin/platform/promotion', { headers });
+      if (resPromo.ok) {
+        const data = await resPromo.json();
+        if (data.promotion) setPromotionForm(data.promotion);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin platform data:', err);
+    }
+  }, [user?.role, sessionToken]);
+
+  const handleSavePromotion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPromotion(true);
+    try {
+      await callAdminApi('/api/admin/platform/promotion', promotionForm);
+      showNotification('Promosi Platform berhasil diperbarui!', 'success');
+      fetchAdminData();
+    } catch (err: unknown) {
+      showNotification(err instanceof Error ? err.message : 'Gagal menyimpan promosi', 'error');
+    } finally {
+      setSavingPromotion(false);
+    }
+  };
+
   // Initial load + Realtime SSE listener
   useEffect(() => {
     fetchDashboard();
+    if (user?.role === 'admin') {
+      fetchAdminData();
+    }
 
     const streamUrl = `/api/realtime?session_token=${encodeURIComponent(sessionToken || '')}&pin=${encodeURIComponent(adminPin || '')}`;
     const eventSource = new EventSource(streamUrl);
@@ -656,6 +715,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <SettingsIcon className="w-4 h-4" />
               <span>Pengaturan</span>
             </button>
+
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => {
+                  setActiveTab('admin');
+                  fetchAdminData();
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-xs tracking-tight transition-all cursor-pointer ${
+                  activeTab === 'admin'
+                    ? isLight
+                      ? 'bg-zinc-900 text-white font-semibold shadow-sm'
+                      : 'bg-white text-black font-semibold shadow-sm'
+                    : isLight
+                    ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.05] font-normal'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/[0.05] font-normal'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-4 h-4 text-[#2997ff]" />
+                  <span>Admin Platform</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2997ff]/20 text-[#2997ff]">
+                  PRO
+                </span>
+              </button>
+            )}
           </nav>
         </div>
 
@@ -2530,6 +2615,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* Platform Promotion Banner Toggle */}
+                <div className="flex items-start gap-3 pt-2 border-t border-white/[0.08]">
+                  <input
+                    type="checkbox"
+                    id="allow_promotion"
+                    checked={settingsForm.allow_promotion || false}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, allow_promotion: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded cursor-pointer accent-[#2997ff] mt-0.5"
+                  />
+                  <div>
+                    <label
+                      htmlFor="allow_promotion"
+                      className="text-xs font-normal text-zinc-300 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-4 h-4 text-[#ffd60a]" />
+                      <span>Tampilkan Platform Promotion Banner di Overlay OBS</span>
+                    </label>
+                    <p className="text-[11px] text-zinc-500 font-normal mt-0.5">
+                      Jika diaktifkan, banner promosi resmi platform akan tampil secara halus di bagian bawah overlay tanpa mengganggu antrian.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <button
@@ -2592,6 +2702,210 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: PLATFORM ADMIN PANEL */}
+        {activeTab === 'admin' && user?.role === 'admin' && (
+          <div className="p-6 sm:p-8 space-y-6 max-w-6xl mx-auto">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2997ff]/20 text-[#2997ff] border border-[#2997ff]/30">
+                  PLATFORM OWNER
+                </span>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">
+                  Admin Platform Panel
+                </h1>
+              </div>
+              <p className="text-xs text-zinc-400 font-normal">
+                Kelola iklan promosi global, pantau statistik SaaS, dan lihat audit platform streamer.
+              </p>
+            </div>
+
+            {/* Platform Analytics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+              <div className="apple-card p-4 rounded-2xl">
+                <div className="text-[10px] font-medium text-zinc-400 uppercase">Total Streamer</div>
+                <div className="text-xl font-bold text-white mt-1">
+                  {platformAnalytics?.total_streamers ?? registeredUsers.length ?? 0}
+                </div>
+              </div>
+              <div className="apple-card p-4 rounded-2xl">
+                <div className="text-[10px] font-medium text-zinc-400 uppercase">Streamer Aktif</div>
+                <div className="text-xl font-bold text-[#30d158] mt-1">
+                  {platformAnalytics?.active_streamers ?? 0}
+                </div>
+              </div>
+              <div className="apple-card p-4 rounded-2xl">
+                <div className="text-[10px] font-medium text-zinc-400 uppercase">Total Queue</div>
+                <div className="text-xl font-bold text-[#2997ff] mt-1">
+                  {platformAnalytics?.total_queue_players ?? 0}
+                </div>
+              </div>
+              <div className="apple-card p-4 rounded-2xl">
+                <div className="text-[10px] font-medium text-zinc-400 uppercase">Total Donasi</div>
+                <div className="text-xl font-bold text-[#ffd60a] mt-1">
+                  {platformAnalytics?.total_donations_count ?? 0}
+                </div>
+              </div>
+              <div className="apple-card p-4 rounded-2xl">
+                <div className="text-[10px] font-medium text-zinc-400 uppercase">Nominal Donasi</div>
+                <div className="text-xs font-bold text-amber-300 mt-1 truncate">
+                  Rp {(platformAnalytics?.total_donations_amount ?? 0).toLocaleString('id-ID')}
+                </div>
+              </div>
+              <div className="apple-card p-4 rounded-2xl">
+                <div className="text-[10px] font-medium text-zinc-400 uppercase">Webhook Events</div>
+                <div className="text-xl font-bold text-purple-400 mt-1">
+                  {platformAnalytics?.total_webhook_events ?? 0}
+                </div>
+              </div>
+            </div>
+
+            {/* Promotion Banner Management Form */}
+            <form onSubmit={handleSavePromotion} className="apple-card p-6 rounded-3xl space-y-5">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#ffd60a]/20 text-[#ffd60a] flex items-center justify-center border border-[#ffd60a]/30">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm tracking-tight text-white">
+                      Pengaturan Platform Promotion Banner
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Banner ini akan tampil di overlay OBS streamer yang mengaktifkan opsi promosi platform.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={promotionForm.enabled}
+                    onChange={(e) =>
+                      setPromotionForm({ ...promotionForm, enabled: e.target.checked })
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#30d158]"></div>
+                  <span className="ml-2.5 text-xs font-medium text-white">
+                    {promotionForm.enabled ? 'Status: AKTIF' : 'Status: NONAKTIF'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1">
+                    Judul Promosi / Produk
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={promotionForm.title}
+                    onChange={(e) =>
+                      setPromotionForm({ ...promotionForm, title: e.target.value })
+                    }
+                    placeholder="Contoh: 🔥 PRODUK TERBARU"
+                    className="apple-input text-xs w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1">
+                    Target Link URL
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={promotionForm.link_url}
+                    onChange={(e) =>
+                      setPromotionForm({ ...promotionForm, link_url: e.target.value })
+                    }
+                    placeholder="https://antrian1v1.com/produk"
+                    className="apple-input text-xs font-mono w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  Deskripsi Singkat Banner
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  value={promotionForm.description}
+                  onChange={(e) =>
+                    setPromotionForm({ ...promotionForm, description: e.target.value })
+                  }
+                  placeholder="Cek produk dan penawaran eksklusif live stream kami sekarang!"
+                  className="apple-input text-xs w-full"
+                />
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={savingPromotion}
+                  className="apple-button-primary py-2.5 px-6 rounded-full text-xs font-medium tracking-tight cursor-pointer disabled:opacity-50"
+                >
+                  {savingPromotion ? 'Menyimpan...' : 'Simpan & Siarkan Promosi Platform'}
+                </button>
+              </div>
+            </form>
+
+            {/* Registered Streamers List */}
+            <div className="apple-card p-6 rounded-3xl space-y-4">
+              <h3 className="font-semibold text-sm tracking-tight text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#2997ff]" />
+                <span>Daftar Akun Streamer Terdaftar ({registeredUsers.length})</span>
+              </h3>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/[0.08] text-zinc-400 font-medium">
+                      <th className="pb-2.5 pl-2">Pengguna</th>
+                      <th className="pb-2.5">Email Google</th>
+                      <th className="pb-2.5">Role</th>
+                      <th className="pb-2.5 pr-2">Tanggal Terdaftar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {registeredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-zinc-500">
+                          Belum ada data akun terdaftar.
+                        </td>
+                      </tr>
+                    ) : (
+                      registeredUsers.map((u) => (
+                        <tr key={u.id} className="text-zinc-200">
+                          <td className="py-2.5 pl-2 font-semibold text-white">{u.name}</td>
+                          <td className="py-2.5 font-mono text-zinc-400">{u.email}</td>
+                          <td className="py-2.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                u.role === 'admin'
+                                  ? 'bg-[#2997ff]/20 text-[#2997ff]'
+                                  : 'bg-white/10 text-zinc-300'
+                              }`}
+                            >
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-2 text-zinc-400 text-[11px]">
+                            {new Date(u.created_at).toLocaleDateString('id-ID')}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

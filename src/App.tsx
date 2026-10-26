@@ -106,10 +106,14 @@ function AppContent() {
 
     syncAuth();
 
-    // 3. Listen to Supabase auth state change (e.g. after Google OAuth redirect)
+    // 3. Listen to Supabase auth state change (e.g. Email login, Sign Up, Password Reset)
     if (supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user && isMounted) {
+        if (
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') &&
+          session?.user &&
+          isMounted
+        ) {
           try {
             const user = session.user;
             const res = await fetch('/api/auth/session', {
