@@ -129,10 +129,201 @@ export interface SupabaseAuthResult {
 }
 
 /**
+ * Ensures streamer has an active overlay token and overlay settings in Supabase.
+ * Automatically backfills and repairs missing tokens or settings rows.
+ */
+export async function ensureUserOverlayTokenAndSettings(profileId: string): Promise<{
+  streamer_token: string;
+  webhook_key: string;
+}> {
+  if (!supabase) {
+    const fallbackTok = '1v1_' + profileId.slice(-8);
+    const fallbackKey = 'sb_' + profileId.slice(-8);
+    return { streamer_token: fallbackTok, webhook_key: fallbackKey };
+  }
+
+  try {
+    // 1. Fetch active token from overlay_tokens table
+    const { data: existingToken } = await supabase
+      .from('overlay_tokens')
+      .select('token')
+      .eq('user_id', profileId)
+      .is('revoked_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let streamerToken = existingToken?.token;
+
+    if (!streamerToken || streamerToken.trim() === '' || streamerToken === 'TOKEN') {
+      // Generate secure unguessable token: 1v1_ + 16 random hex characters
+      const randomArr = new Uint8Array(8);
+      if (typeof window !== 'undefined' && window.crypto) {
+        window.crypto.getRandomValues(randomArr);
+      } else {
+        for (let i = 0; i < 8; i++) randomArr[i] = Math.floor(Math.random() * 256);
+      }
+      const randomHex = Array.from(randomArr)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      streamerToken = `1v1_${randomHex}`;
+
+      await supabase
+        .from('overlay_tokens')
+        .insert({
+          user_id: profileId,
+          token: streamerToken,
+        })
+        .catch((e) => console.warn('[Supabase Token Insert Notice]', e));
+    }
+
+    // 2. Fetch or update overlay_settings table
+    const { data: existingSettings } = await supabase
+      .from('overlay_settings')
+      .select('id, streamer_token, webhook_key')
+      .eq('user_id', profileId)
+      .maybeSingle();
+
+    let webhookKey = existingSettings?.webhook_key;
+    if (!webhookKey) {
+      const randomArr = new Uint8Array(8);
+      if (typeof window !== 'undefined' && window.crypto) {
+        window.crypto.getRandomValues(randomArr);
+      } else {
+        for (let i = 0; i < 8; i++) randomArr[i] = Math.floor(Math.random() * 256);
+      }
+      webhookKey =
+        'sb_' +
+        Array.from(randomArr)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+    }
+
+    if (!existingSettings) {
+      await supabase
+        .from('overlay_settings')
+        .insert({
+          user_id: profileId,
+          streamer_token: streamerToken,
+          webhook_key: webhookKey,
+          title: 'ANTRIAN BY1',
+          theme: 'obsidian',
+          min_donation: 10000,
+          vip_min_donation: 25000,
+          vvip_min_donation: 50000,
+        })
+        .catch((e) => console.warn('[Supabase Settings Insert Notice]', e));
+    } else if (!existingSettings.streamer_token || existingSettings.streamer_token !== streamerToken) {
+      await supabase
+        .from('overlay_settings')
+        .update({
+          streamer_token: streamerToken,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', profileId)
+        .catch((e) => console.warn('[Supabase Settings Update Notice]', e));
+    }
+
+    return { streamer_token: streamerToken, webhook_key: webhookKey };
+  } catch (err) {
+    console.warn('[Supabase Token Repair Exception]', err);
+    return {
+      streamer_token: '1v1_' + profileId.slice(-8),
+      webhook_key: 'sb_' + profileId.slice(-8),
+    };
+  }
+}
+
+/**
+ * Gets overlay settings directly from Supabase with automatic token repair
+ */
+export async function getOverlaySettingsFromSupabase(
+  profileIdOrAuthId: string
+): Promise<OverlaySettings | null> {
+  if (!supabase || !profileIdOrAuthId) return null;
+
+  try {
+    // Look up profile by id or auth_user_id
+    let profileId = profileIdOrAuthId;
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('id, auth_user_id, name')
+      .or(`id.eq.${profileIdOrAuthId},auth_user_id.eq.${profileIdOrAuthId}`)
+      .maybeSingle();
+
+    if (prof) {
+      profileId = prof.id;
+    }
+
+    // Ensure token & settings exist
+    const { streamer_token, webhook_key } = await ensureUserOverlayTokenAndSettings(profileId);
+
+    // Fetch full overlay_settings row
+    const { data: settings } = await supabase
+      .from('overlay_settings')
+      .select('*')
+      .eq('user_id', profileId)
+      .maybeSingle();
+
+    if (settings) {
+      return {
+        ...settings,
+        streamer_name: prof?.name,
+        streamer_token: settings.streamer_token || streamer_token,
+        webhook_key: settings.webhook_key || webhook_key,
+        custom_colors: {
+          ...DEFAULT_OVERLAY_COLORS,
+          ...(settings.custom_colors || {}),
+        },
+      } as OverlaySettings;
+    }
+
+    // Fallback constructed settings
+    return {
+      id: 'set_' + profileId,
+      user_id: profileId,
+      streamer_name: prof?.name,
+      streamer_token: streamer_token,
+      webhook_key: webhook_key,
+      title: 'ANTRIAN BY1',
+      theme: 'obsidian',
+      font_size: 'medium',
+      max_visible_players: 5,
+      animation: 'smooth',
+      opacity: 96,
+      card_size: 'normal',
+      spacing: 8,
+      sociabuzz_url: 'https://sociabuzz.com',
+      min_donation: 10000,
+      vip_min_donation: 25000,
+      vvip_min_donation: 50000,
+      max_queue_limit: 50,
+      sound_alert: true,
+      allow_free_queue: false,
+      live_badge_text: 'LIVE',
+      hide_playing_in_overlay: false,
+      panel_width: 440,
+      show_id: true,
+      show_vip_badge: true,
+      show_live_badge: true,
+      border_radius: 22,
+      enable_animation: true,
+      allow_promotion: false,
+      custom_colors: { ...DEFAULT_OVERLAY_COLORS },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as OverlaySettings;
+  } catch (err) {
+    console.error('[Supabase getOverlaySettings Error]', err);
+    return null;
+  }
+}
+
+/**
  * Synchronizes Supabase authenticated user with the public.profiles table.
  * - Queries profiles table for matching auth_user_id.
- * - If profile does not exist yet (e.g. trigger skipped or delay), creates the profile row safely.
- * - Handles conflict without duplicate errors and never crashes the login flow.
+ * - If profile does not exist yet, creates the profile row safely.
+ * - Always ensures an active overlay token and settings exist in Supabase for the user.
  */
 export async function syncUserProfile(authUser: User): Promise<{
   profile: UserProfile;
@@ -150,122 +341,66 @@ export async function syncUserProfile(authUser: User): Promise<{
     authUser.user_metadata?.picture ||
     `https://api.dicebear.com/7.x/bottts/svg?seed=${authUserId}`;
 
-  // Deterministic user ID for profile (e.g. usr_ + auth UUID hex)
   const deterministicId = 'usr_' + authUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
 
-  const fallbackProfile: UserProfile = {
+  let profileRecord: UserProfile | null = null;
+
+  if (supabase) {
+    try {
+      // 1. Fetch profile from Supabase profiles table
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        profileRecord = existingProfile as UserProfile;
+      } else {
+        // 2. Profile missing: Safely insert profile record
+        const { data: inserted } = await supabase
+          .from('profiles')
+          .insert({
+            id: deterministicId,
+            auth_user_id: authUserId,
+            name,
+            email,
+            avatar_url: avatarUrl,
+            role: 'streamer',
+          })
+          .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
+          .maybeSingle();
+
+        if (inserted) {
+          profileRecord = inserted as UserProfile;
+        }
+      }
+
+      // 3. Guarantee active overlay token and settings exist in Supabase
+      const targetProfileId = profileRecord ? profileRecord.id : deterministicId;
+      const { streamer_token } = await ensureUserOverlayTokenAndSettings(targetProfileId);
+
+      if (profileRecord) {
+        profileRecord.streamer_token = streamer_token;
+      }
+    } catch (err) {
+      console.warn('[Supabase Profile Sync] Notice during profile/token sync:', err);
+    }
+  }
+
+  const finalProfile: UserProfile = profileRecord || {
     id: deterministicId,
     auth_user_id: authUserId,
     email,
     name,
     avatar_url: avatarUrl,
     role: 'streamer',
+    streamer_token: '1v1_' + deterministicId.slice(-8),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  if (!supabase) {
-    return { profile: fallbackProfile };
-  }
-
-  try {
-    // 1. Fetch profile from Supabase profiles table for this authenticated user
-    const { data: existingProfile, error: selectError } = await supabase
-      .from('profiles')
-      .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
-      .eq('auth_user_id', authUserId)
-      .maybeSingle();
-
-    if (selectError) {
-      console.warn('[Supabase Profile Sync] Notice on profiles SELECT:', selectError.message);
-    }
-
-    if (existingProfile) {
-      const typedProfile = existingProfile as UserProfile;
-      return { profile: typedProfile };
-    }
-
-    // 2. Profile missing: Safely insert profile record
-    const { data: inserted, error: insertError } = await supabase
-      .from('profiles')
-      .insert({
-        id: deterministicId,
-        auth_user_id: authUserId,
-        name,
-        email,
-        avatar_url: avatarUrl,
-        role: 'streamer',
-      })
-      .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
-      .maybeSingle();
-
-    if (insertError) {
-      console.warn('[Supabase Profile Sync] Notice on profiles INSERT:', insertError.message);
-      // If error is duplicate/conflict (e.g. concurrent trigger), query one more time
-      const { data: retryProfile } = await supabase
-        .from('profiles')
-        .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
-        .eq('auth_user_id', authUserId)
-        .maybeSingle();
-
-      if (retryProfile) {
-        return { profile: retryProfile as UserProfile };
-      }
-    }
-
-    const finalProfile: UserProfile = (inserted as UserProfile) || fallbackProfile;
-
-    // 3. Ensure streamer has active overlay token & settings
-    try {
-      const { data: existingToken } = await supabase
-        .from('overlay_tokens')
-        .select('token')
-        .eq('user_id', finalProfile.id)
-        .maybeSingle();
-
-      let streamerToken = existingToken?.token;
-      if (!streamerToken) {
-        streamerToken = '1v1_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-        await supabase
-          .from('overlay_tokens')
-          .insert({
-            user_id: finalProfile.id,
-            token: streamerToken,
-          })
-          .catch(() => null);
-      }
-
-      const { data: existingSettings } = await supabase
-        .from('overlay_settings')
-        .select('id')
-        .eq('user_id', finalProfile.id)
-        .maybeSingle();
-
-      if (!existingSettings) {
-        const webhookKey = 'sb_' + Math.random().toString(36).substring(2, 10);
-        await supabase
-          .from('overlay_settings')
-          .insert({
-            user_id: finalProfile.id,
-            streamer_token: streamerToken,
-            webhook_key: webhookKey,
-            title: 'ANTRIAN BY1',
-            theme: 'obsidian',
-            min_donation: 10000,
-            vip_min_donation: 25000,
-            vvip_min_donation: 50000,
-          })
-          .catch(() => null);
-      }
-    } catch (auxErr) {
-      console.warn('[Supabase Profile Sync] Aux token/settings non-fatal notice:', auxErr);
-    }
-
-    return { profile: finalProfile };
-  } catch (err) {
-    console.error('[Supabase Profile Sync] Non-blocking exception during profile sync:', err);
-    return { profile: fallbackProfile };
-  }
+  return { profile: finalProfile };
 }
 
 /**

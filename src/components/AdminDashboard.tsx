@@ -56,7 +56,7 @@ import { OverlayView } from './OverlayView';
 import { OverlayColorCustomizer } from './OverlayColorCustomizer';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeHeaderControls } from './ThemeHeaderControls';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getOverlaySettingsFromSupabase } from '../lib/supabase';
 
 interface AdminDashboardProps {
   user?: UserProfile;
@@ -184,35 +184,70 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Fetch full dashboard
   const fetchDashboard = useCallback(async () => {
+    let dashboardSettings: OverlaySettings | null = null;
+    let dashboardQueue: QueueItem[] = [];
+    let dashboardDonations: Donation[] = [];
+    let dashboardStats: QueueStats | null = null;
+    let dashboardLogs: ActivityLog[] = [];
+    let dashboardWebhooks: WebhookEvent[] = [];
+
     try {
       const headers: Record<string, string> = {};
       if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
       if (adminPin) headers['x-admin-pin'] = adminPin;
 
       const res = await fetch('/api/admin/dashboard', { headers });
-      if (res.status === 401) {
+      if (res.ok) {
+        const data = await res.json();
+        dashboardSettings = data.settings;
+        dashboardQueue = data.queue || [];
+        dashboardDonations = data.donations || [];
+        dashboardStats = data.stats || null;
+        dashboardLogs = data.logs || [];
+        dashboardWebhooks = data.webhook_events || [];
+      } else if (res.status === 401 && !user) {
         onLogout();
         return;
       }
-      const data = await res.json();
-      setSettings(data.settings);
-      setSettingsForm(data.settings);
-      setQueue(data.queue);
-      setDonations(data.donations);
-      setStats(data.stats);
-      setLogs(data.logs);
-      if (data.webhook_events) setWebhookEvents(data.webhook_events);
-
-      // If user has not manually overridden theme locally, respect server setting
-      if (data.settings?.dashboard_ui_theme && !localStorage.getItem('dashboard_ui_theme')) {
-        setUiTheme(data.settings.dashboard_ui_theme);
-      }
     } catch (e) {
-      console.error('Error fetching dashboard:', e);
-    } finally {
-      setLoading(false);
+      console.warn('API /api/admin/dashboard unreachable, using Supabase fallback:', e);
     }
-  }, [sessionToken, adminPin, onLogout]);
+
+    // Direct Supabase Fallback if settings or streamer_token is missing
+    if (
+      (!dashboardSettings ||
+        !dashboardSettings.streamer_token ||
+        dashboardSettings.streamer_token === 'TOKEN') &&
+      user
+    ) {
+      try {
+        const targetId = user.id || user.auth_user_id;
+        if (targetId) {
+          const directSettings = await getOverlaySettingsFromSupabase(targetId);
+          if (directSettings) {
+            dashboardSettings = directSettings;
+          }
+        }
+      } catch (err) {
+        console.warn('Direct Supabase settings fetch error:', err);
+      }
+    }
+
+    if (dashboardSettings) {
+      setSettings(dashboardSettings);
+      setSettingsForm(dashboardSettings);
+    }
+    setQueue(dashboardQueue);
+    setDonations(dashboardDonations);
+    setStats(dashboardStats);
+    setLogs(dashboardLogs);
+    if (dashboardWebhooks.length > 0) setWebhookEvents(dashboardWebhooks);
+
+    if (dashboardSettings?.dashboard_ui_theme && !localStorage.getItem('dashboard_ui_theme')) {
+      setUiTheme(dashboardSettings.dashboard_ui_theme);
+    }
+    setLoading(false);
+  }, [sessionToken, adminPin, onLogout, user]);
 
   // Fetch admin platform data
   const fetchAdminData = useCallback(async () => {
@@ -505,9 +540,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // URL Helpers
-  const domain = typeof window !== 'undefined' ? window.location.origin : 'https://DOMAIN';
-  const overlayUrl = `${domain}/overlay/${settings?.streamer_token || 'TOKEN'}`;
-  const joinUrl = `${domain}/join?streamer=${settings?.streamer_token || ''}`;
+  const domain = typeof window !== 'undefined' ? window.location.origin : 'https://overlay-by-fianzsrow.vercel.app';
+  const hasToken = Boolean(settings?.streamer_token && settings.streamer_token.trim() !== '' && settings.streamer_token !== 'TOKEN');
+  const overlayUrl = hasToken ? `${domain}/overlay/${settings!.streamer_token}` : '';
+  const joinUrl = hasToken ? `${domain}/join?streamer=${settings!.streamer_token}` : `${domain}/join`;
   const sociabuzzUrl = settings?.sociabuzz_url || 'https://sociabuzz.com/prostreamer';
   const webhookKey = settings?.webhook_key || settings?.streamer_token || 'KEY';
   const webhookUrl = `${domain}/api/webhooks/sociabuzz/${webhookKey}`;
@@ -1702,39 +1738,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <Tv className="w-4 h-4 text-[#2997ff]" />
                   OBS Browser Source URL
                 </span>
-                <span className="text-xs font-mono font-medium px-3 py-1 rounded-full bg-white/[0.08] text-zinc-300 border border-white/[0.1]">
-                  Token: {settings?.streamer_token}
-                </span>
+                {hasToken ? (
+                  <span className="text-xs font-mono font-medium px-3 py-1 rounded-full bg-white/[0.08] text-zinc-300 border border-white/[0.1]">
+                    Token: {settings?.streamer_token}
+                  </span>
+                ) : (
+                  <span className="text-xs font-mono font-medium px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse flex items-center gap-1.5">
+                    <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
+                    Menyiapkan Token...
+                  </span>
+                )}
               </div>
 
               {/* URL Input Box */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                <input
-                  type="text"
-                  readOnly
-                  value={overlayUrl}
-                  className="apple-input text-xs flex-1 select-all"
-                />
-                <button
-                  onClick={() => copyToClipboard(overlayUrl, 'overlay')}
-                  className="apple-button-primary py-3 px-6 rounded-full text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {copiedLink ? (
-                    <Check className="w-3.5 h-3.5 text-[#30d158]" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  <span>{copiedLink ? 'Link Tersalin!' : 'Copy Link OBS'}</span>
-                </button>
-                <a
-                  href={overlayUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="apple-button-secondary py-3 px-5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Open Preview</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                {hasToken ? (
+                  <>
+                    <input
+                      type="text"
+                      readOnly
+                      value={overlayUrl}
+                      className="apple-input text-xs flex-1 select-all"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(overlayUrl, 'overlay')}
+                      className="apple-button-primary py-3 px-6 rounded-full text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {copiedLink ? (
+                        <Check className="w-3.5 h-3.5 text-[#30d158]" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedLink ? 'Link Tersalin!' : 'Copy Link OBS'}</span>
+                    </button>
+                    <a
+                      href={overlayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="apple-button-secondary py-3 px-5 rounded-full text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Open Preview</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </>
+                ) : (
+                  <div className="w-full py-3.5 px-4 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-xs text-zinc-400 flex items-center gap-2.5">
+                    <RefreshCw className="w-4 h-4 animate-spin text-[#2997ff]" />
+                    <span>Membuat token overlay unik untuk akun Anda... Mohon tunggu sebentar.</span>
+                  </div>
+                )}
               </div>
 
               {/* Quick OBS Setup Guide */}

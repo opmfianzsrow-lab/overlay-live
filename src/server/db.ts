@@ -481,6 +481,32 @@ class Database {
       this.saveData();
     }
 
+    // Auto-repair if streamer_token is missing, empty, or placeholder 'TOKEN'
+    if (
+      !this.data.settings[userId].streamer_token ||
+      this.data.settings[userId].streamer_token.trim() === '' ||
+      this.data.settings[userId].streamer_token === 'TOKEN'
+    ) {
+      const now = new Date().toISOString();
+      const newToken = generateSecureOverlayToken();
+      this.data.settings[userId].streamer_token = newToken;
+
+      const activeTok = this.data.overlay_tokens.find(
+        (t) => t.user_id === userId && !t.revoked_at
+      );
+      if (!activeTok) {
+        this.data.overlay_tokens.push({
+          id: 'tok_' + crypto.randomBytes(6).toString('hex'),
+          user_id: userId,
+          token: newToken,
+          created_at: now,
+        });
+      } else {
+        activeTok.token = newToken;
+      }
+      this.saveData();
+    }
+
     if (!this.data.settings[userId].custom_colors) {
       this.data.settings[userId].custom_colors = { ...DEFAULT_OVERLAY_COLORS };
     }
