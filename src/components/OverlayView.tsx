@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Crown, Sparkles, Swords, Layers } from 'lucide-react';
+import { Crown, Sparkles, Swords, Layers, AlertCircle } from 'lucide-react';
 import type { QueueItem, OverlaySettings, PlatformPromotion, OverlayCustomColors } from '../types/queue';
 import { DEFAULT_OVERLAY_COLORS } from '../types/queue';
 import { THEMES } from '../utils/theme';
 import { playNextMatchChime, playJoinChime } from '../utils/audio';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface OverlayViewProps {
   token?: string;
@@ -15,6 +16,7 @@ interface OverlayViewProps {
 
 function hexToRgba(color: string, opacity: number): string {
   if (!color) return `rgba(12, 12, 14, ${opacity})`;
+  if (opacity <= 0) return 'transparent';
   if (color.startsWith('rgba') || color.startsWith('rgb')) return color;
   let clean = color.replace('#', '').trim();
   if (clean.length === 3) {
@@ -42,110 +44,261 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
   const prevFirstPlayerId = useRef<string | null>(null);
   const prevQueueLength = useRef<number>(0);
 
-  // Sync preview props
+  // Sync preview props when in preview mode
   useEffect(() => {
     if (previewSettings) setSettings(previewSettings);
     if (previewQueue) setQueue(previewQueue);
   }, [previewSettings, previewQueue]);
 
-  // Connect to realtime SSE stream
+  // Ensure OBS Browser Source transparency and disable all page scrollbars
+  useEffect(() => {
+    if (!isPreviewMode && typeof document !== 'undefined') {
+      document.body.classList.add('obs-overlay-mode');
+      document.documentElement.style.backgroundColor = 'transparent';
+      document.body.style.backgroundColor = 'transparent';
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+
+      return () => {
+        document.body.classList.remove('obs-overlay-mode');
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
+      };
+    }
+  }, [isPreviewMode]);
+
+  // Direct Supabase Fallback Query (for static Vercel deployments)
+  const fetchFromSupabase = useCallback(async (targetToken: string) => {
+    if (!isSupabaseConfigured() || !supabase) {
+      throw new Error('Supabase belum terkonfigurasi. Tidak dapat mengambil data antrian.');
+    }
+
+    // 1. Verify token & get user_id
+    const { data: tokData, error: tokErr } = await supabase
+      .from('overlay_tokens')
+      .select('user_id, token, revoked_at')
+      .eq('token', targetToken)
+      .maybeSingle();
+
+    if (tokErr || !tokData || tokData.revoked_at) {
+      throw new Error('Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
+    }
+
+    const targetUserId = tokData.user_id;
+
+    // 2. Fetch overlay settings for this streamer
+    const { data: setData } = await supabase
+      .from('overlay_settings')
+      .select('*')
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    // 3. Fetch streamer profile name
+    const { data: profData } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+    // 4. Fetch waiting players only (QUEUED / WAITING)
+    const { data: qPlayers } = await supabase
+      .from('queue_players')
+      .select('*')
+      .eq('user_id', targetUserId)
+      .in('status', ['QUEUED', 'WAITING'])
+      .order('position', { ascending: true });
+
+    const mappedQueue: QueueItem[] = (qPlayers || []).map((qp: any) => ({
+      id: qp.id,
+      player_id: qp.id,
+      position: qp.position,
+      status: qp.status,
+      joined_at: qp.joined_at,
+      player: {
+        id: qp.id,
+        name: qp.name,
+        game_id: qp.game_id || '-',
+        membership: qp.membership || 'REGULAR',
+        status: qp.status,
+        created_at: qp.joined_at,
+        updated_at: qp.updated_at || qp.joined_at,
+      },
+    }));
+
+    return {
+      settings: {
+        ...(setData || {}),
+        streamer_name: profData?.name,
+        user_id: targetUserId,
+      },
+      queue: mappedQueue,
+      targetUserId,
+    };
+  }, []);
+
+  // Connect to realtime SSE stream with Supabase fallback
   useEffect(() => {
     if (isPreviewMode && previewQueue) return;
 
-    const streamToken =
-      token || (typeof window !== 'undefined' ? window.location.pathname.split('/overlay/')[1] : '');
-    if (!streamToken) return;
+    // Clean token string from URL or props
+    const rawPath = typeof window !== 'undefined' ? window.location.pathname : '';
+    const pathToken = rawPath.startsWith('/overlay')
+      ? rawPath.replace(/^\/overlay\/?/, '').split('?')[0].split('/')[0].trim()
+      : '';
+    const streamToken = (token || pathToken || '').trim();
 
-    fetch(`/api/public/overlay/${streamToken}`)
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error('Overlay tidak ditemukan atau link sudah tidak aktif.');
-          }
-          throw new Error('Gagal memuat data overlay.');
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setErrorMsg(null);
-        setSettings(data.settings);
-        setQueue(data.queue);
-        if (data.promotion) {
-          setPromotion(data.promotion);
-        }
-        if (data.queue.length > 0) {
-          prevFirstPlayerId.current = data.queue[0]?.player_id || null;
-          prevQueueLength.current = data.queue.length;
-        }
-      })
-      .catch((err) => {
-        setErrorMsg(err.message || 'Overlay tidak ditemukan atau link sudah tidak aktif.');
-        console.error('Overlay fetch error:', err);
-      });
+    if (!streamToken) {
+      setErrorMsg('Token overlay tidak disertakan pada URL. Format: /overlay/TOKEN_USER');
+      return;
+    }
 
-    const eventSource = new EventSource(`/api/realtime?token=${streamToken}`);
+    let activeEventSource: EventSource | null = null;
+    let supaChannel: any = null;
+    let isMounted = true;
 
-    eventSource.onopen = () => {
-      setConnected(true);
-    };
-
-    eventSource.addEventListener('init', (e) => {
+    async function loadData() {
+      // Step A: Try fetching from backend API
       try {
-        const payload = JSON.parse(e.data);
-        if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
-        if (payload.queue) setQueue(payload.queue);
-      } catch (err) {
-        console.error('Error handling init event', err);
-      }
-    });
-
-    eventSource.addEventListener('queue_update', (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        if (payload.settings) {
-          setSettings((prev) => ({ ...prev, ...payload.settings }));
-        }
-        if (payload.queue) {
-          const newQueue: QueueItem[] = payload.queue;
-
-          const currentFirst = newQueue[0]?.player_id;
-          if (prevFirstPlayerId.current && currentFirst && currentFirst !== prevFirstPlayerId.current) {
-            if (payload.settings?.sound_alert !== false) {
-              playNextMatchChime();
-            }
-          } else if (newQueue.length > prevQueueLength.current) {
-            if (payload.settings?.sound_alert !== false) {
-              playJoinChime();
-            }
+        const res = await fetch(`/api/public/overlay/${streamToken}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!isMounted) return;
+          setErrorMsg(null);
+          setSettings(data.settings);
+          setQueue(data.queue || []);
+          if (data.promotion) setPromotion(data.promotion);
+          if (data.queue && data.queue.length > 0) {
+            prevFirstPlayerId.current = data.queue[0]?.player_id || null;
+            prevQueueLength.current = data.queue.length;
           }
 
-          prevFirstPlayerId.current = currentFirst || null;
-          prevQueueLength.current = newQueue.length;
-          setQueue(newQueue);
-        }
-      } catch (err) {
-        console.error('SSE queue_update parse error:', err);
-      }
-    });
+          // Setup SSE Realtime
+          activeEventSource = new EventSource(`/api/realtime?token=${streamToken}`);
+          activeEventSource.onopen = () => {
+            if (isMounted) setConnected(true);
+          };
 
-    eventSource.onerror = () => {
-      setConnected(false);
-    };
+          activeEventSource.addEventListener('init', (e) => {
+            try {
+              const payload = JSON.parse(e.data);
+              if (payload.settings && isMounted) setSettings((prev) => ({ ...prev, ...payload.settings }));
+              if (payload.queue && isMounted) setQueue(payload.queue);
+            } catch (err) {
+              console.error('Error handling init event', err);
+            }
+          });
+
+          activeEventSource.addEventListener('queue_update', (e) => {
+            try {
+              const payload = JSON.parse(e.data);
+              if (payload.settings && isMounted) {
+                setSettings((prev) => ({ ...prev, ...payload.settings }));
+              }
+              if (payload.queue && isMounted) {
+                const newQueue: QueueItem[] = payload.queue;
+                const currentFirst = newQueue[0]?.player_id;
+                if (prevFirstPlayerId.current && currentFirst && currentFirst !== prevFirstPlayerId.current) {
+                  if (payload.settings?.sound_alert !== false) playNextMatchChime();
+                } else if (newQueue.length > prevQueueLength.current) {
+                  if (payload.settings?.sound_alert !== false) playJoinChime();
+                }
+                prevFirstPlayerId.current = currentFirst || null;
+                prevQueueLength.current = newQueue.length;
+                setQueue(newQueue);
+              }
+            } catch (err) {
+              console.error('SSE queue_update parse error:', err);
+            }
+          });
+
+          activeEventSource.onerror = () => {
+            if (isMounted) setConnected(false);
+          };
+          return;
+        }
+
+        // If 404 from backend API, token is invalid
+        if (res.status === 404) {
+          throw new Error('Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
+        }
+      } catch (apiErr: any) {
+        // Step B: Backend API unavailable or failed -> Fallback to direct Supabase query
+        if (apiErr.message?.includes('tidak ditemukan')) {
+          if (isMounted) setErrorMsg(apiErr.message);
+          return;
+        }
+
+        try {
+          const fallbackData = await fetchFromSupabase(streamToken);
+          if (!isMounted) return;
+          setErrorMsg(null);
+          setSettings(fallbackData.settings as OverlaySettings);
+          setQueue(fallbackData.queue);
+          setConnected(true);
+
+          // Setup Supabase Realtime channel for Vercel static deployments
+          if (supabase && fallbackData.targetUserId) {
+            supaChannel = supabase.channel(`obs-overlay-${streamToken}`)
+              .on(
+                'postgres_changes',
+                {
+                  event: '*',
+                  schema: 'public',
+                  table: 'queue_players',
+                  filter: `user_id=eq.${fallbackData.targetUserId}`,
+                },
+                async () => {
+                  try {
+                    const fresh = await fetchFromSupabase(streamToken);
+                    if (isMounted) setQueue(fresh.queue);
+                  } catch {}
+                }
+              )
+              .on(
+                'postgres_changes',
+                {
+                  event: '*',
+                  schema: 'public',
+                  table: 'overlay_settings',
+                  filter: `user_id=eq.${fallbackData.targetUserId}`,
+                },
+                (payload: any) => {
+                  if (payload.new && isMounted) {
+                    setSettings((prev) => ({ ...prev, ...(payload.new as OverlaySettings) }));
+                  }
+                }
+              )
+              .subscribe();
+          }
+        } catch (supaErr: any) {
+          if (isMounted) {
+            setErrorMsg(supaErr.message || 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
+          }
+        }
+      }
+    }
+
+    loadData();
 
     return () => {
-      eventSource.close();
+      isMounted = false;
+      if (activeEventSource) activeEventSource.close();
+      if (supaChannel && supabase) supabase.removeChannel(supaChannel);
     };
-  }, [token, isPreviewMode, previewQueue]);
+  }, [token, isPreviewMode, previewQueue, fetchFromSupabase]);
 
   if (errorMsg && !isPreviewMode) {
     return (
-      <div className="p-4 bg-transparent select-none">
-        <div className="max-w-[420px] rounded-2xl p-4 bg-black/85 border-2 border-red-500/80 text-white shadow-2xl backdrop-blur-md">
-          <div className="flex items-center gap-2.5 text-red-400 font-black text-xs uppercase mb-1">
+      <div className="p-6 bg-transparent select-none font-sans min-h-screen flex items-start justify-start">
+        <div className="max-w-[420px] w-full rounded-2xl p-5 bg-black/90 border border-red-500/60 text-white shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-2.5 text-red-400 font-bold text-xs uppercase mb-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            <span>Link Overlay Tidak Valid</span>
+            <span>Overlay Tidak Tersedia</span>
           </div>
-          <p className="text-xs text-zinc-300 font-bold">{errorMsg}</p>
+          <p className="text-xs text-zinc-300 font-normal leading-relaxed">{errorMsg}</p>
+          <div className="mt-3 pt-3 border-t border-white/[0.08] text-[11px] text-zinc-500">
+            Pastikan URL Browser Source di OBS Studio sama persis dengan link yang ada pada dashboard streamer.
+          </div>
         </div>
       </div>
     );
@@ -170,7 +323,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 
   const maxVisible = settings?.max_visible_players || 5;
   const userOpacity = settings?.opacity ?? 96;
-  const opacityVal = Math.max(0.2, Math.min(1, userOpacity / 100));
+  const opacityVal = Math.max(0, Math.min(1, userOpacity / 100));
   const enableAnimation = settings?.enable_animation !== false;
   const panelWidth = settings?.panel_width || 440;
   const showId = settings?.show_id !== false;
@@ -216,7 +369,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
   }[settings?.font_size || 'medium'];
 
   // =========================================================================
-  // REQUIREMENT 1: SISTEM TAMPILAN DAFTAR ANTRIAN KHUSUS OVERLAY OBS
+  // REQUIREMENT 1 & 3: SISTEM TAMPILAN DAFTAR ANTRIAN KHUSUS OVERLAY OBS
   // - Overlay hanya menampilkan pemain dengan status MENUNGGU atau WAITING.
   // - Pemain dengan status SEDANG BERMAIN / PLAYING jangan ditampilkan di daftar overlay.
   // - Akun pemilik/streamer juga jangan ditampilkan sebagai pemain antrian.
@@ -264,8 +417,8 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
   return (
     <div
       className={`${
-        isPreviewMode ? 'w-full flex items-center justify-center p-2' : 'p-2 sm:p-3 inline-block'
-      } bg-transparent select-none overflow-visible`}
+        isPreviewMode ? 'w-full flex items-center justify-center p-2' : 'p-2 sm:p-3 inline-block overflow-hidden'
+      } bg-transparent select-none`}
     >
       {/* 
         OVERLAY OBS FRAMED CONTAINER WITH CUSTOM COLORS:

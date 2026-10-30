@@ -186,7 +186,7 @@ CREATE POLICY "Streamer can manage their queue players"
 
 CREATE POLICY "Public read active queue for live overlays"
   ON public.queue_players FOR SELECT
-  USING (status IN ('QUEUED', 'PLAYING'));
+  USING (status IN ('QUEUED', 'WAITING'));
 
 -- DONATIONS POLICIES
 CREATE POLICY "Streamer can view and manage their donations"
@@ -198,6 +198,10 @@ CREATE POLICY "Streamer can view and manage their tokens"
   ON public.overlay_tokens FOR ALL
   USING (user_id = public.current_profile_id());
 
+CREATE POLICY "Public validate active overlay token"
+  ON public.overlay_tokens FOR SELECT
+  USING (revoked_at IS NULL);
+
 -- OVERLAY SETTINGS POLICIES
 CREATE POLICY "Streamer can manage their overlay settings"
   ON public.overlay_settings FOR ALL
@@ -205,6 +209,11 @@ CREATE POLICY "Streamer can manage their overlay settings"
 
 CREATE POLICY "Public read overlay settings by token"
   ON public.overlay_settings FOR SELECT
+  USING (true);
+
+-- PROFILES PUBLIC READ FOR STREAMER NAME ON OVERLAY
+CREATE POLICY "Public read streamer name for overlay"
+  ON public.profiles FOR SELECT
   USING (true);
 
 -- WEBHOOK EVENTS POLICIES

@@ -574,11 +574,19 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Multi-User Streamer Queue & OBS Overlay Server running at http://localhost:${PORT}`);
+  // Only start standalone HTTP server if not running inside a Vercel serverless environment
+  if (process.env.VERCEL !== '1') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Multi-User Streamer Queue & OBS Overlay Server running at http://localhost:${PORT}`);
+    });
+  }
+}
+
+if (process.env.VERCEL !== '1') {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-});
+export { app };
+export default app;

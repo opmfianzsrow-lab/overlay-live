@@ -191,10 +191,19 @@ function AppContent() {
     setCurrentUser(null);
   };
 
-  // 1. Overlay Route: /overlay/:token
-  if (currentPath.startsWith('/overlay/')) {
-    const token = currentPath.split('/overlay/')[1];
-    return <OverlayView token={token} />;
+  // 1. Overlay Route: /overlay/:token (Strictly public, no auth required, no dashboard UI, works in Incognito)
+  if (currentPath.startsWith('/overlay')) {
+    const rawToken = currentPath
+      .replace(/^\/overlay\/?/, '')
+      .split('?')[0]
+      .split('/')[0]
+      .trim();
+
+    return (
+      <div className="w-full min-h-screen bg-transparent overflow-hidden select-none">
+        <OverlayView token={rawToken} />
+      </div>
+    );
   }
 
   // 2. Viewer Join Route: /join
