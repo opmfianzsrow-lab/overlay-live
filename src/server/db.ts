@@ -16,6 +16,7 @@ import type {
   PlatformPromotion,
   PlatformAnalytics,
 } from '../types/queue.ts';
+import { DEFAULT_OVERLAY_COLORS } from '../types/queue.ts';
 
 export interface DatabaseSchema {
   users: UserProfile[];
@@ -255,6 +256,7 @@ class Database {
       enable_animation: true,
       animation_speed: 'normal',
       allow_promotion: false,
+      custom_colors: { ...DEFAULT_OVERLAY_COLORS },
       created_at: now,
       updated_at: now,
     };
@@ -464,6 +466,7 @@ class Database {
         enable_animation: true,
         animation_speed: 'normal',
         allow_promotion: false,
+        custom_colors: { ...DEFAULT_OVERLAY_COLORS },
         created_at: now,
         updated_at: now,
       };
@@ -477,11 +480,25 @@ class Database {
 
       this.saveData();
     }
+
+    if (!this.data.settings[userId].custom_colors) {
+      this.data.settings[userId].custom_colors = { ...DEFAULT_OVERLAY_COLORS };
+    }
+
     return this.data.settings[userId];
   }
 
   public getSettings(userId: string): OverlaySettings {
-    return this.ensureUserSettings(userId);
+    const s = this.ensureUserSettings(userId);
+    const user = this.getUser(userId);
+    return {
+      ...s,
+      streamer_name: user?.name,
+      custom_colors: {
+        ...DEFAULT_OVERLAY_COLORS,
+        ...(s.custom_colors || {}),
+      },
+    };
   }
 
   public updateSettings(userId: string, updates: Partial<OverlaySettings>): OverlaySettings {

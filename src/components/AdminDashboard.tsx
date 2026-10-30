@@ -46,13 +46,17 @@ import type {
   WebhookEvent,
   PlatformAnalytics,
   PlatformPromotion,
+  OverlayCustomColors,
 } from '../types/queue';
+import { DEFAULT_OVERLAY_COLORS } from '../types/queue';
 import { EditPlayerModal } from './modals/EditPlayerModal';
 import { AddPlayerModal } from './modals/AddPlayerModal';
 import { SociabuzzSimulatorModal } from './modals/SociabuzzSimulatorModal';
 import { OverlayView } from './OverlayView';
+import { OverlayColorCustomizer } from './OverlayColorCustomizer';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeHeaderControls } from './ThemeHeaderControls';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AdminDashboardProps {
   user?: UserProfile;
@@ -394,16 +398,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     fetchDashboard();
   };
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setSavingSettings(true);
     setSettingsSuccess('');
     try {
       const res = await callAdminApi('/api/admin/settings', settingsForm);
       setSettings(res.settings);
+      setSettingsForm(res.settings);
       setSettingsSuccess('Pengaturan berhasil disimpan!');
       showNotification('Pengaturan berhasil disimpan!', 'success');
       setTimeout(() => setSettingsSuccess(''), 3000);
+
+      // Sync to Supabase if configured and user is signed in
+      if (isSupabaseConfigured() && supabase && user?.id) {
+        try {
+          await supabase
+            .from('overlay_settings')
+            .upsert(
+              {
+                user_id: user.id,
+                streamer_token: res.settings.streamer_token,
+                custom_colors: res.settings.custom_colors,
+                title: res.settings.title,
+                theme: res.settings.theme,
+                font_size: res.settings.font_size,
+                max_visible_players: res.settings.max_visible_players,
+                animation: res.settings.animation,
+                opacity: res.settings.opacity,
+                card_size: res.settings.card_size,
+                spacing: res.settings.spacing,
+                sound_alert: res.settings.sound_alert,
+                live_badge_text: res.settings.live_badge_text,
+                hide_playing_in_overlay: res.settings.hide_playing_in_overlay,
+                panel_width: res.settings.panel_width,
+                show_id: res.settings.show_id,
+                show_vip_badge: res.settings.show_vip_badge,
+                show_live_badge: res.settings.show_live_badge,
+                border_radius: res.settings.border_radius,
+                enable_animation: res.settings.enable_animation,
+                allow_promotion: res.settings.allow_promotion,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' }
+            );
+        } catch (supaErr) {
+          console.warn('[Supabase Sync] overlay_settings upsert notice:', supaErr);
+        }
+      }
     } catch (err: unknown) {
       showNotification(
         err instanceof Error ? err.message : 'Gagal menyimpan pengaturan',
@@ -412,6 +454,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  const handleColorsChange = (newColors: OverlayCustomColors) => {
+    setSettingsForm((prev) => ({
+      ...prev,
+      custom_colors: newColors,
+    }));
+  };
+
+  const handleResetColors = () => {
+    setSettingsForm((prev) => ({
+      ...prev,
+      custom_colors: { ...DEFAULT_OVERLAY_COLORS },
+    }));
+    showNotification('Warna overlay dikembalikan ke default Obsidian.', 'info');
   };
 
   const handleRegenerateToken = async () => {
@@ -1720,13 +1777,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="w-full bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:16px_16px] bg-zinc-950/80 rounded-2xl p-6 flex justify-center min-h-[460px] overflow-hidden border border-white/[0.08]">
                 <div className="w-full max-w-[440px]">
                   <OverlayView
-                    previewSettings={settings || undefined}
+                    previewSettings={{
+                      ...settings,
+                      ...settingsForm,
+                      custom_colors: {
+                        ...DEFAULT_OVERLAY_COLORS,
+                        ...(settingsForm.custom_colors || settings?.custom_colors || {}),
+                      },
+                    } as OverlaySettings}
                     previewQueue={queue}
                     isPreviewMode={true}
                   />
                 </div>
               </div>
             </div>
+
+            {/* BAGIAN PENGATURAN BARU: CUSTOMISASI WARNA OVERLAY */}
+            <OverlayColorCustomizer
+              colors={settingsForm.custom_colors || settings?.custom_colors || DEFAULT_OVERLAY_COLORS}
+              onChange={handleColorsChange}
+              onReset={handleResetColors}
+              onSave={() => handleSaveSettings()}
+              isSaving={savingSettings}
+              saveSuccess={settingsSuccess}
+              isLight={isLight}
+            />
           </div>
         )}
 
@@ -2641,6 +2716,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* BAGIAN PENGATURAN BARU: CUSTOMISASI WARNA OVERLAY */}
+              <OverlayColorCustomizer
+                colors={settingsForm.custom_colors || settings?.custom_colors || DEFAULT_OVERLAY_COLORS}
+                onChange={handleColorsChange}
+                onReset={handleResetColors}
+                onSave={() => handleSaveSettings()}
+                isSaving={savingSettings}
+                saveSuccess={settingsSuccess}
+                isLight={isLight}
+              />
 
               <button
                 type="submit"

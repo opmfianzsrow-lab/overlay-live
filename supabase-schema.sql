@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS public.overlay_settings (
   border_radius INT NOT NULL DEFAULT 22,
   enable_animation BOOLEAN NOT NULL DEFAULT true,
   allow_promotion BOOLEAN NOT NULL DEFAULT false,
+  custom_colors JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -320,3 +321,22 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ==============================================================================
+-- SAFE MIGRATION: ADD custom_colors COLUMN TO overlay_settings (NON-DESTRUCTIVE)
+-- Can be executed safely in existing Supabase projects without losing data
+-- ==============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'overlay_settings' 
+    AND column_name = 'custom_colors'
+  ) THEN
+    ALTER TABLE public.overlay_settings 
+      ADD COLUMN custom_colors JSONB NOT NULL DEFAULT '{}'::jsonb;
+    RAISE NOTICE 'Added custom_colors column to public.overlay_settings successfully.';
+  END IF;
+END $$;
+

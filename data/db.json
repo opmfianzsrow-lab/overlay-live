@@ -1,13 +1,245 @@
 {
-  "users": [],
-  "overlay_tokens": [],
-  "settings": {},
-  "players": [],
-  "queue": [],
+  "users": [
+    {
+      "id": "usr_73592dc3dfa6",
+      "auth_user_id": "3a352475-ff4c-46ca-848f-8df6d6f72dbf",
+      "email": "hfiz22379@gmail.com",
+      "name": "FAIZ",
+      "avatar_url": "https://api.dicebear.com/7.x/bottts/svg?seed=hfiz22379%40gmail.com",
+      "role": "admin",
+      "created_at": "2026-10-30T11:27:07.314Z",
+      "updated_at": "2026-10-30T11:27:07.314Z"
+    },
+    {
+      "id": "usr_f4bc781b3cec",
+      "auth_user_id": "test-uuid-1",
+      "email": "streamer@test.com",
+      "name": "Bang Streamer",
+      "avatar_url": "https://api.dicebear.com/7.x/bottts/svg?seed=streamer%40test.com",
+      "role": "streamer",
+      "created_at": "2026-10-30T11:30:40.463Z",
+      "updated_at": "2026-10-30T11:30:40.463Z"
+    }
+  ],
+  "overlay_tokens": [
+    {
+      "id": "tok_d820add21e10",
+      "user_id": "usr_73592dc3dfa6",
+      "token": "1v1_ed6a3bce8eaa50506f0530ec",
+      "created_at": "2026-10-30T11:27:07.314Z"
+    },
+    {
+      "id": "tok_616c632344fb",
+      "user_id": "usr_f4bc781b3cec",
+      "token": "1v1_5806d0eb14e177f309fb5842",
+      "created_at": "2026-10-30T11:30:40.463Z"
+    }
+  ],
+  "settings": {
+    "usr_73592dc3dfa6": {
+      "id": "settings_usr_73592dc3dfa6",
+      "user_id": "usr_73592dc3dfa6",
+      "streamer_token": "1v1_ed6a3bce8eaa50506f0530ec",
+      "webhook_key": "sb_wh_a7ab61e16e93",
+      "webhook_secret": "sb_sec_ed951716f249db9266b6",
+      "title": "ANTRIAN BY1",
+      "theme": "obsidian",
+      "font_size": "medium",
+      "max_visible_players": 5,
+      "animation": "smooth",
+      "opacity": 96,
+      "card_size": "normal",
+      "spacing": 8,
+      "sociabuzz_url": "https://sociabuzz.com/hfiz22379",
+      "min_donation": 10000,
+      "vip_min_donation": 25000,
+      "vvip_min_donation": 50000,
+      "max_queue_limit": 50,
+      "sound_alert": true,
+      "allow_free_queue": false,
+      "live_badge_text": "LIVE",
+      "hide_playing_in_overlay": false,
+      "dashboard_ui_theme": "dark",
+      "panel_width": 440,
+      "show_id": true,
+      "show_vip_badge": true,
+      "show_live_badge": true,
+      "border_radius": 22,
+      "enable_animation": true,
+      "animation_speed": "normal",
+      "allow_promotion": false,
+      "created_at": "2026-10-30T11:27:07.314Z",
+      "updated_at": "2026-10-30T11:27:07.314Z",
+      "custom_colors": {
+        "bg_primary": "#0c0c0e",
+        "header_bg": "#141418",
+        "card_bg": "#18181d",
+        "card_border": "#27272a",
+        "text_primary": "#f4f4f5",
+        "text_secondary": "#a1a1aa",
+        "accent_color": "#3b82f6",
+        "queue_number_color": "#ffffff",
+        "vip_badge_color": "#a855f7",
+        "vvip_badge_color": "#eab308",
+        "live_indicator_color": "#ef4444"
+      }
+    },
+    "usr_f4bc781b3cec": {
+      "id": "settings_usr_f4bc781b3cec",
+      "user_id": "usr_f4bc781b3cec",
+      "streamer_token": "1v1_5806d0eb14e177f309fb5842",
+      "webhook_key": "sb_wh_1d3e439b7f81",
+      "webhook_secret": "sb_sec_38db534389da7f85ba06",
+      "title": "ANTRIAN BY1",
+      "theme": "obsidian",
+      "font_size": "medium",
+      "max_visible_players": 5,
+      "animation": "smooth",
+      "opacity": 96,
+      "card_size": "normal",
+      "spacing": 8,
+      "sociabuzz_url": "https://sociabuzz.com/streamer",
+      "min_donation": 10000,
+      "vip_min_donation": 25000,
+      "vvip_min_donation": 50000,
+      "max_queue_limit": 50,
+      "sound_alert": true,
+      "allow_free_queue": false,
+      "live_badge_text": "LIVE",
+      "hide_playing_in_overlay": false,
+      "dashboard_ui_theme": "dark",
+      "panel_width": 440,
+      "show_id": true,
+      "show_vip_badge": true,
+      "show_live_badge": true,
+      "border_radius": 22,
+      "enable_animation": true,
+      "animation_speed": "normal",
+      "allow_promotion": false,
+      "custom_colors": {
+        "bg_primary": "#0a0d14",
+        "header_bg": "#0f172a",
+        "card_bg": "#0f1a2e",
+        "card_border": "#06b6d4",
+        "text_primary": "#22d3ee",
+        "text_secondary": "#67e8f9",
+        "accent_color": "#06b6d4",
+        "queue_number_color": "#facc15",
+        "vip_badge_color": "#ec4899",
+        "vvip_badge_color": "#f59e0b",
+        "live_indicator_color": "#f43f5e"
+      },
+      "created_at": "2026-10-30T11:30:40.463Z",
+      "updated_at": "2026-10-30T11:30:49.632Z"
+    }
+  },
+  "players": [
+    {
+      "id": "p-3650f546",
+      "user_id": "usr_f4bc781b3cec",
+      "name": "Player Alpha",
+      "game_id": "111222",
+      "membership": "REGULAR",
+      "status": "QUEUED",
+      "created_at": "2026-10-30T11:31:03.024Z",
+      "updated_at": "2026-10-30T11:31:03.024Z"
+    },
+    {
+      "id": "p-864eccb1",
+      "user_id": "usr_f4bc781b3cec",
+      "name": "Player Beta",
+      "game_id": "333444",
+      "membership": "VIP",
+      "status": "QUEUED",
+      "created_at": "2026-10-30T11:31:03.041Z",
+      "updated_at": "2026-10-30T11:31:03.041Z"
+    },
+    {
+      "id": "p-161116cc",
+      "user_id": "usr_f4bc781b3cec",
+      "name": "Bang Streamer",
+      "game_id": "999999",
+      "membership": "VVIP",
+      "status": "QUEUED",
+      "created_at": "2026-10-30T11:31:03.058Z",
+      "updated_at": "2026-10-30T11:31:03.058Z"
+    }
+  ],
+  "queue": [
+    {
+      "id": "q-01dd9220",
+      "user_id": "usr_f4bc781b3cec",
+      "player_id": "p-3650f546",
+      "position": 3,
+      "status": "QUEUED",
+      "joined_at": "2026-10-30T11:31:03.024Z"
+    },
+    {
+      "id": "q-a4750e5f",
+      "user_id": "usr_f4bc781b3cec",
+      "player_id": "p-864eccb1",
+      "position": 1,
+      "status": "QUEUED",
+      "joined_at": "2026-10-30T11:31:03.041Z"
+    },
+    {
+      "id": "q-37f59f2d",
+      "user_id": "usr_f4bc781b3cec",
+      "player_id": "p-161116cc",
+      "position": 2,
+      "status": "QUEUED",
+      "joined_at": "2026-10-30T11:31:03.058Z"
+    }
+  ],
   "donations": [],
   "webhook_events": [],
-  "activity_logs": [],
-  "sessions": {},
+  "activity_logs": [
+    {
+      "id": "log-1793359863058-cb94",
+      "user_id": "usr_f4bc781b3cec",
+      "text": "Bang Streamer (999999) masuk antrian #2 [VVIP]",
+      "type": "join",
+      "timestamp": "2026-10-30T11:31:03.058Z"
+    },
+    {
+      "id": "log-1793359863042-cc5q",
+      "user_id": "usr_f4bc781b3cec",
+      "text": "Player Beta (333444) masuk antrian #1 [VIP]",
+      "type": "join",
+      "timestamp": "2026-10-30T11:31:03.042Z"
+    },
+    {
+      "id": "log-1793359863024-mts0",
+      "user_id": "usr_f4bc781b3cec",
+      "text": "Player Alpha (111222) masuk antrian #1 [REGULAR]",
+      "type": "join",
+      "timestamp": "2026-10-30T11:31:03.024Z"
+    },
+    {
+      "id": "log-1793359840464-580n",
+      "user_id": "usr_f4bc781b3cec",
+      "text": "Akun streamer baru terdaftar via Supabase Auth (streamer@test.com)",
+      "type": "edit",
+      "timestamp": "2026-10-30T11:30:40.464Z"
+    },
+    {
+      "id": "log-1793359627315-7jm6",
+      "user_id": "usr_73592dc3dfa6",
+      "text": "Akun streamer baru terdaftar via Supabase Auth (hfiz22379@gmail.com)",
+      "type": "edit",
+      "timestamp": "2026-10-30T11:27:07.315Z"
+    }
+  ],
+  "sessions": {
+    "sess_TRbsveL4ZGLxX3v6Iq0PJoBrnfzlkQky": {
+      "user_id": "usr_73592dc3dfa6",
+      "expires_at": 1795951627315
+    },
+    "sess_0FiZtcMQVmcZ1-c8r_8CmC6fGlS4qIwx": {
+      "user_id": "usr_f4bc781b3cec",
+      "expires_at": 1795951840464
+    }
+  },
   "platform_promotion": {
     "id": "promo_default",
     "enabled": false,
