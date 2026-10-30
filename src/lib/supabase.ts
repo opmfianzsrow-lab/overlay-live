@@ -1,12 +1,23 @@
 import { createClient, SupabaseClient, User, Session } from '@supabase/supabase-js';
+import type { UserProfile } from '../types/queue';
 
 export const getSupabaseUrl = (): string => {
-  const url = import.meta.env.VITE_SUPABASE_URL || 'https://ddznezhftcwmftdrnyso.supabase.co';
+  const envUrl =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_SUPABASE_URL
+      : undefined;
+  const url = envUrl || 'https://ddznezhftcwmftdrnyso.supabase.co';
   return typeof url === 'string' ? url.trim() : 'https://ddznezhftcwmftdrnyso.supabase.co';
 };
 
 export const getSupabaseAnonKey = (): string => {
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const envKey =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_SUPABASE_ANON_KEY
+      : undefined;
+  const key =
+    envKey ||
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkem5lemhmdGN3bWZ0ZHJueXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMDAzMTgsImV4cCI6MjEwODU3NjMxOH0.XEUvnliZN_7VJhHDHv_DPrtUO6Q81EkYpsPNZulz3rI';
   return typeof key === 'string' ? key.trim() : '';
 };
 
@@ -107,6 +118,156 @@ export function isValidEmail(email: string): boolean {
   return re.test(email.trim());
 }
 
+export interface SupabaseAuthResult {
+  user?: UserProfile | null;
+  authUser?: User | null;
+  session?: Session | null;
+  sessionToken?: string;
+  needEmailVerification?: boolean;
+  error?: string;
+  rawError?: string;
+}
+
+/**
+ * Synchronizes Supabase authenticated user with the public.profiles table.
+ * - Queries profiles table for matching auth_user_id.
+ * - If profile does not exist yet (e.g. trigger skipped or delay), creates the profile row safely.
+ * - Handles conflict without duplicate errors and never crashes the login flow.
+ */
+export async function syncUserProfile(authUser: User): Promise<{
+  profile: UserProfile;
+  error?: string;
+}> {
+  const authUserId = authUser.id;
+  const email = authUser.email || '';
+  const name =
+    authUser.user_metadata?.full_name ||
+    authUser.user_metadata?.name ||
+    email.split('@')[0] ||
+    'Streamer';
+  const avatarUrl =
+    authUser.user_metadata?.avatar_url ||
+    authUser.user_metadata?.picture ||
+    `https://api.dicebear.com/7.x/bottts/svg?seed=${authUserId}`;
+
+  // Deterministic user ID for profile (e.g. usr_ + auth UUID hex)
+  const deterministicId = 'usr_' + authUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+
+  const fallbackProfile: UserProfile = {
+    id: deterministicId,
+    auth_user_id: authUserId,
+    email,
+    name,
+    avatar_url: avatarUrl,
+    role: 'streamer',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!supabase) {
+    return { profile: fallbackProfile };
+  }
+
+  try {
+    // 1. Fetch profile from Supabase profiles table for this authenticated user
+    const { data: existingProfile, error: selectError } = await supabase
+      .from('profiles')
+      .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle();
+
+    if (selectError) {
+      console.warn('[Supabase Profile Sync] Notice on profiles SELECT:', selectError.message);
+    }
+
+    if (existingProfile) {
+      const typedProfile = existingProfile as UserProfile;
+      return { profile: typedProfile };
+    }
+
+    // 2. Profile missing: Safely insert profile record
+    const { data: inserted, error: insertError } = await supabase
+      .from('profiles')
+      .insert({
+        id: deterministicId,
+        auth_user_id: authUserId,
+        name,
+        email,
+        avatar_url: avatarUrl,
+        role: 'streamer',
+      })
+      .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
+      .maybeSingle();
+
+    if (insertError) {
+      console.warn('[Supabase Profile Sync] Notice on profiles INSERT:', insertError.message);
+      // If error is duplicate/conflict (e.g. concurrent trigger), query one more time
+      const { data: retryProfile } = await supabase
+        .from('profiles')
+        .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+      if (retryProfile) {
+        return { profile: retryProfile as UserProfile };
+      }
+    }
+
+    const finalProfile: UserProfile = (inserted as UserProfile) || fallbackProfile;
+
+    // 3. Ensure streamer has active overlay token & settings
+    try {
+      const { data: existingToken } = await supabase
+        .from('overlay_tokens')
+        .select('token')
+        .eq('user_id', finalProfile.id)
+        .maybeSingle();
+
+      let streamerToken = existingToken?.token;
+      if (!streamerToken) {
+        streamerToken = '1v1_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+        await supabase
+          .from('overlay_tokens')
+          .insert({
+            user_id: finalProfile.id,
+            token: streamerToken,
+          })
+          .catch(() => null);
+      }
+
+      const { data: existingSettings } = await supabase
+        .from('overlay_settings')
+        .select('id')
+        .eq('user_id', finalProfile.id)
+        .maybeSingle();
+
+      if (!existingSettings) {
+        const webhookKey = 'sb_' + Math.random().toString(36).substring(2, 10);
+        await supabase
+          .from('overlay_settings')
+          .insert({
+            user_id: finalProfile.id,
+            streamer_token: streamerToken,
+            webhook_key: webhookKey,
+            title: 'ANTRIAN BY1',
+            theme: 'obsidian',
+            min_donation: 10000,
+            vip_min_donation: 25000,
+            vvip_min_donation: 50000,
+          })
+          .catch(() => null);
+      }
+    } catch (auxErr) {
+      console.warn('[Supabase Profile Sync] Aux token/settings non-fatal notice:', auxErr);
+    }
+
+    return { profile: finalProfile };
+  } catch (err) {
+    console.error('[Supabase Profile Sync] Non-blocking exception during profile sync:', err);
+    return { profile: fallbackProfile };
+  }
+}
+
 /**
  * Registers a new streamer account with Email & Password in Supabase Auth
  */
@@ -114,11 +275,11 @@ export async function signUpWithEmail(
   email: string,
   password: string,
   fullName: string
-): Promise<{ user?: User | null; session?: Session | null; needEmailVerification?: boolean; error?: string }> {
+): Promise<SupabaseAuthResult> {
   if (!isSupabaseConfigured() || !supabase) {
     return {
       error:
-        'Supabase belum terkonfigurasi. Harap tentukan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada file .env Anda.',
+        'Supabase belum terkonfigurasi. Harap tentukan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada pengaturan environment variables Anda.',
     };
   }
 
@@ -150,25 +311,36 @@ export async function signUpWithEmail(
 
     if (error) {
       console.warn('[Supabase Auth] signUp raw error:', error.message);
-      return { error: error.message };
+      return { error: translateAuthError(error.message), rawError: error.message };
     }
 
-    const user = data.user;
+    const authUser = data.user;
     const session = data.session;
 
     // Check if Supabase returned zero identities (means email is already registered)
-    if (user && Array.isArray(user.identities) && user.identities.length === 0) {
+    if (authUser && Array.isArray(authUser.identities) && authUser.identities.length === 0) {
       return {
-        error: 'Email ini sudah terdaftar di Supabase Auth. Silakan masuk menggunakan menu Login atau gunakan fitur Lupa Password.',
+        error:
+          'Email ini sudah terdaftar di Supabase Auth. Silakan masuk menggunakan menu Login atau gunakan fitur Lupa Password.',
       };
     }
 
-    // If user created but session is missing, Email Confirmation is active in Supabase Console
-    const needVerification = Boolean(user && !session);
+    const needVerification = Boolean(authUser && !session);
+
+    let profile: UserProfile | undefined = undefined;
+    let sessionToken: string | undefined = undefined;
+
+    if (authUser && session) {
+      const syncRes = await syncUserProfile(authUser);
+      profile = syncRes.profile;
+      sessionToken = session.access_token;
+    }
 
     return {
-      user,
+      user: profile,
+      authUser,
       session,
+      sessionToken,
       needEmailVerification: needVerification,
     };
   } catch (err: unknown) {
@@ -184,11 +356,11 @@ export async function signUpWithEmail(
 export async function signInWithEmail(
   email: string,
   password: string
-): Promise<{ user?: User | null; session?: Session | null; error?: string }> {
+): Promise<SupabaseAuthResult> {
   if (!isSupabaseConfigured() || !supabase) {
     return {
       error:
-        'Supabase belum terkonfigurasi. Harap tentukan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada file .env.',
+        'Supabase belum terkonfigurasi. Harap tentukan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY pada konfigurasi environment variables Anda.',
     };
   }
 
@@ -209,12 +381,27 @@ export async function signInWithEmail(
 
     if (error) {
       console.warn('[Supabase Auth] signIn raw error:', error.message);
-      return { error: error.message };
+      return {
+        error: translateAuthError(error.message),
+        rawError: error.message,
+      };
     }
 
+    if (!data.user || !data.session) {
+      return {
+        error: 'Sesi login tidak ditemukan. Harap periksa email dan password Anda.',
+      };
+    }
+
+    // Direct synchronization with Supabase profiles table
+    const { profile } = await syncUserProfile(data.user);
+    const sessionToken = data.session.access_token;
+
     return {
-      user: data.user,
+      user: profile,
+      authUser: data.user,
       session: data.session,
+      sessionToken,
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Terjadi kesalahan jaringan atau koneksi Supabase.';

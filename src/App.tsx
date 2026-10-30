@@ -9,7 +9,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AppBackground } from './components/AppBackground';
 import { ThemeCustomizerModal } from './components/ThemeCustomizerModal';
 import { ThemeHeaderControls } from './components/ThemeHeaderControls';
-import { supabase, signOut } from './lib/supabase';
+import { supabase, signOut, syncUserProfile } from './lib/supabase';
 
 function AppContent() {
   const { theme } = useTheme();
@@ -47,26 +47,51 @@ function AppContent() {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user && isMounted) {
             const user = session.user;
-            const res = await fetch('/api/auth/session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                auth_user_id: user.id,
-                email: user.email,
-                name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
-                avatar_url: user.user_metadata?.avatar_url,
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (isMounted) {
-                setCurrentUser(data.user);
-                setSessionToken(data.sessionToken);
-                localStorage.setItem('streamer_session_token', data.sessionToken);
-                localStorage.setItem('streamer_user_data', JSON.stringify(data.user));
-                setAuthChecking(false);
-                return;
+            let loggedInUser: UserProfile | null = null;
+            let token: string = session.access_token || `sp_${user.id}`;
+
+            try {
+              const res = await fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  auth_user_id: user.id,
+                  email: user.email,
+                  name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
+                  avatar_url: user.user_metadata?.avatar_url,
+                }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                loggedInUser = data.user;
+                token = data.sessionToken;
               }
+            } catch (err) {
+              console.warn('[Auth] Express /api/auth/session check unreachable:', err);
+            }
+
+            if (!loggedInUser) {
+              const directProfile = await syncUserProfile(user);
+              if (directProfile) {
+                loggedInUser = {
+                  id: directProfile.id || user.id,
+                  auth_user_id: user.id,
+                  name: directProfile.name || user.email?.split('@')[0] || 'Streamer',
+                  email: user.email || '',
+                  role: directProfile.role || 'streamer',
+                  streamer_token: directProfile.streamer_token || user.id,
+                  created_at: directProfile.created_at || new Date().toISOString(),
+                };
+              }
+            }
+
+            if (loggedInUser && isMounted) {
+              setCurrentUser(loggedInUser);
+              setSessionToken(token);
+              localStorage.setItem('streamer_session_token', token);
+              localStorage.setItem('streamer_user_data', JSON.stringify(loggedInUser));
+              setAuthChecking(false);
+              return;
             }
           }
         } catch (e) {
@@ -116,24 +141,49 @@ function AppContent() {
         ) {
           try {
             const user = session.user;
-            const res = await fetch('/api/auth/session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                auth_user_id: user.id,
-                email: user.email,
-                name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
-                avatar_url: user.user_metadata?.avatar_url,
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (isMounted) {
-                setCurrentUser(data.user);
-                setSessionToken(data.sessionToken);
-                localStorage.setItem('streamer_session_token', data.sessionToken);
-                localStorage.setItem('streamer_user_data', JSON.stringify(data.user));
+            let loggedInUser: UserProfile | null = null;
+            let token: string = session.access_token || `sp_${user.id}`;
+
+            try {
+              const res = await fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  auth_user_id: user.id,
+                  email: user.email,
+                  name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
+                  avatar_url: user.user_metadata?.avatar_url,
+                }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                loggedInUser = data.user;
+                token = data.sessionToken;
               }
+            } catch (err) {
+              console.warn('[Auth] Error syncing auth session via API:', err);
+            }
+
+            if (!loggedInUser) {
+              const directProfile = await syncUserProfile(user);
+              if (directProfile) {
+                loggedInUser = {
+                  id: directProfile.id || user.id,
+                  auth_user_id: user.id,
+                  name: directProfile.name || user.email?.split('@')[0] || 'Streamer',
+                  email: user.email || '',
+                  role: directProfile.role || 'streamer',
+                  streamer_token: directProfile.streamer_token || user.id,
+                  created_at: directProfile.created_at || new Date().toISOString(),
+                };
+              }
+            }
+
+            if (loggedInUser && isMounted) {
+              setCurrentUser(loggedInUser);
+              setSessionToken(token);
+              localStorage.setItem('streamer_session_token', token);
+              localStorage.setItem('streamer_user_data', JSON.stringify(loggedInUser));
             }
           } catch (err) {
             console.error('[Auth] Error syncing auth session:', err);
