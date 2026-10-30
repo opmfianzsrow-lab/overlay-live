@@ -235,6 +235,71 @@ export async function ensureUserOverlayTokenAndSettings(profileId: string): Prom
 }
 
 /**
+ * Regenerates a brand new OBS streamer token for the user in Supabase.
+ * Revokes all previous active tokens in overlay_tokens and updates overlay_settings.
+ */
+export async function regenerateOverlayTokenInSupabase(profileId: string): Promise<{
+  streamer_token: string;
+}> {
+  const now = new Date().toISOString();
+
+  let randomUuid = '';
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+    randomUuid = window.crypto.randomUUID();
+  } else {
+    const randomArr = new Uint8Array(16);
+    if (typeof window !== 'undefined' && window.crypto) {
+      window.crypto.getRandomValues(randomArr);
+    } else {
+      for (let i = 0; i < 16; i++) randomArr[i] = Math.floor(Math.random() * 256);
+    }
+    randomUuid = Array.from(randomArr)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  const newToken = `1v1_${randomUuid}`;
+
+  if (!supabase) {
+    return { streamer_token: newToken };
+  }
+
+  try {
+    // 1. Revoke existing active tokens for this user in overlay_tokens
+    await supabase
+      .from('overlay_tokens')
+      .update({ revoked_at: now })
+      .eq('user_id', profileId)
+      .is('revoked_at', null)
+      .catch((e) => console.warn('[Supabase Token Revoke Notice]', e));
+
+    // 2. Insert new active token into overlay_tokens
+    await supabase
+      .from('overlay_tokens')
+      .insert({
+        user_id: profileId,
+        token: newToken,
+        created_at: now,
+      })
+      .catch((e) => console.warn('[Supabase Token Insert Notice]', e));
+
+    // 3. Update overlay_settings table streamer_token
+    await supabase
+      .from('overlay_settings')
+      .update({
+        streamer_token: newToken,
+        updated_at: now,
+      })
+      .eq('user_id', profileId)
+      .catch((e) => console.warn('[Supabase Settings Token Update Notice]', e));
+
+    return { streamer_token: newToken };
+  } catch (err) {
+    console.error('[Supabase Token Regenerate Exception]', err);
+    return { streamer_token: newToken };
+  }
+}
+
+/**
  * Gets overlay settings directly from Supabase with automatic token repair
  */
 export async function getOverlaySettingsFromSupabase(

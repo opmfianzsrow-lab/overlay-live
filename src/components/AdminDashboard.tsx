@@ -56,7 +56,7 @@ import { OverlayView } from './OverlayView';
 import { OverlayColorCustomizer } from './OverlayColorCustomizer';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeHeaderControls } from './ThemeHeaderControls';
-import { supabase, isSupabaseConfigured, getOverlaySettingsFromSupabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getOverlaySettingsFromSupabase, regenerateOverlayTokenInSupabase } from '../lib/supabase';
 
 interface AdminDashboardProps {
   user?: UserProfile;
@@ -106,6 +106,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSimModal, setShowSimModal] = useState(false);
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState<Partial<OverlaySettings>>({});
@@ -506,19 +508,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     showNotification('Warna overlay dikembalikan ke default Obsidian.', 'info');
   };
 
-  const handleRegenerateToken = async () => {
+  const handleConfirmRegenerateToken = async () => {
+    setIsRegeneratingToken(true);
     try {
-      const res = await callAdminApi('/api/admin/settings/regenerate-token');
-      if (settings) {
-        setSettings({ ...settings, streamer_token: res.token });
+      let newToken = '';
+
+      // 1. Try server API
+      try {
+        const res = await callAdminApi('/api/admin/settings/regenerate-token');
+        if (res && res.token) {
+          newToken = res.token;
+        }
+      } catch (e) {
+        console.warn('[Regenerate Token] API call notice, falling back to direct Supabase:', e);
       }
-      showNotification('Token OBS baru berhasil dibuat: ' + res.token, 'success');
-      fetchDashboard();
+
+      // 2. Direct Supabase sync if server API missed or client-side Vercel serverless
+      const targetUserId = user?.id || user?.auth_user_id;
+      if (targetUserId) {
+        const supaRes = await regenerateOverlayTokenInSupabase(targetUserId);
+        if (supaRes && supaRes.streamer_token) {
+          newToken = supaRes.streamer_token;
+        }
+      }
+
+      if (newToken) {
+        setSettings((prev) => (prev ? { ...prev, streamer_token: newToken } : null));
+        setSettingsForm((prev) => ({ ...prev, streamer_token: newToken }));
+        showNotification(
+          'Token OBS Overlay berhasil diperbarui! Mohon perbarui URL Browser Source pada OBS Studio Anda.',
+          'success'
+        );
+      } else {
+        showNotification('Gagal memperbarui token OBS. Silakan coba lagi.', 'error');
+      }
     } catch (err: unknown) {
       showNotification(
-        err instanceof Error ? err.message : 'Gagal regenerate token',
+        err instanceof Error ? err.message : 'Gagal regenerate token OBS',
         'error'
       );
+    } finally {
+      setIsRegeneratingToken(false);
+      setShowRegenerateModal(false);
+      fetchDashboard();
     }
   };
 
@@ -1733,21 +1765,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* OBS BROWSER SOURCE CARD - APPLE MINIMAL FROSTED */}
             <div className="apple-glass rounded-3xl border border-white/[0.1] shadow-2xl text-white p-6 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="font-semibold text-xs tracking-tight uppercase flex items-center gap-2 text-white">
                   <Tv className="w-4 h-4 text-[#2997ff]" />
                   OBS Browser Source URL
                 </span>
-                {hasToken ? (
-                  <span className="text-xs font-mono font-medium px-3 py-1 rounded-full bg-white/[0.08] text-zinc-300 border border-white/[0.1]">
-                    Token: {settings?.streamer_token}
-                  </span>
-                ) : (
-                  <span className="text-xs font-mono font-medium px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse flex items-center gap-1.5">
-                    <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
-                    Menyiapkan Token...
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {hasToken ? (
+                    <>
+                      <span className="text-xs font-mono font-medium px-3 py-1 rounded-full bg-white/[0.08] text-zinc-300 border border-white/[0.1]">
+                        Token: {settings?.streamer_token}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowRegenerateModal(true)}
+                        className="px-3 py-1 rounded-full text-xs font-medium bg-white/[0.06] hover:bg-white/[0.12] text-amber-300 hover:text-amber-200 border border-amber-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                        title="Buat ulang token jika URL lama ingin dicabut"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Buat Ulang Token</span>
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xs font-mono font-medium px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse flex items-center gap-1.5">
+                      <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
+                      Menyiapkan Token...
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* URL Input Box */}
@@ -3073,6 +3118,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onClose={() => setShowSimModal(false)}
           onSimulate={handleSimulateDonation}
         />
+      )}
+
+      {/* Security Confirmation Modal for OBS Token Regeneration */}
+      {showRegenerateModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="apple-glass border border-white/[0.14] text-white shadow-2xl rounded-3xl max-w-md w-full p-6 space-y-5 relative backdrop-blur-2xl">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-[#ffd60a] shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base tracking-tight text-white">
+                  Buat Ulang Token OBS Overlay?
+                </h3>
+                <p className="text-xs text-zinc-400 font-normal mt-0.5">
+                  Konfirmasi keamanan sebelum mengganti token
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-2">
+              <p className="font-semibold text-amber-300">⚠️ PERINGATAN KEAMANAN:</p>
+              <p className="leading-relaxed text-zinc-300">
+                Membuat token baru akan <strong className="text-white">LANGSUNG MENCABUT AKSE</strong> link OBS Browser Source saat ini. URL overlay lama Anda tidak akan dapat digunakan lagi di OBS Studio.
+              </p>
+              <p className="text-[11px] text-zinc-400">
+                Setelah token baru dibuat, Anda wajib menyalin URL baru dan memperbaruinya di OBS Studio Anda.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isRegeneratingToken}
+                onClick={() => setShowRegenerateModal(false)}
+                className="apple-button-secondary px-4 py-2.5 rounded-full text-xs font-medium cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isRegeneratingToken}
+                onClick={handleConfirmRegenerateToken}
+                className="apple-button-primary px-5 py-2.5 rounded-full text-xs font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2 cursor-pointer shadow-lg"
+              >
+                {isRegeneratingToken ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Memproses...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Ya, Buat Token Baru</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
