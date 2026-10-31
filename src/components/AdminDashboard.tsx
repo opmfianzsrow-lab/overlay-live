@@ -140,6 +140,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     type: 'success' | 'error' | 'info';
   } | null>(null);
 
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const addDebugLog = (msg: string) => {
+    const timestamp = new Date().toISOString();
+    setDebugLogs(prev => [...prev, `[${timestamp}] ${msg}`]);
+    console.log(`[PREVIEW-DEBUG] [${timestamp}] ${msg}`);
+  };
+  const downloadDebugLog = () => {
+    const element = document.createElement('a');
+    const file = new Blob([debugLogs.join('\n')], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = 'preview-debug.log';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   const showNotification = useCallback(
     (message: string, type: 'success' | 'error' | 'info' = 'info') => {
       setToast({ message, type });
@@ -956,6 +972,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Quick Header Actions + Background Theme Switcher */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={downloadDebugLog}
+              className="apple-button-secondary py-1.5 px-3.5 text-xs rounded-full flex items-center gap-1.5 cursor-pointer"
+            >
+              <Code className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Download Debug Log</span>
+            </button>
+
             <ThemeHeaderControls compact={false} />
 
             <button
