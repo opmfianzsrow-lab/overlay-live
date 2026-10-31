@@ -594,9 +594,11 @@ export async function getOverlaySettingsFromSupabase(
           streamer_name: profName || settingsRow.streamer_name,
           streamer_token: settingsRow.streamer_token || streamer_token,
           webhook_key: settingsRow.webhook_key || webhook_key,
+          animation_speed: settingsRow.animation_speed || 'normal',
+          dashboard_ui_theme: settingsRow.dashboard_ui_theme || 'neobrutalism',
           custom_colors: {
             ...DEFAULT_OVERLAY_COLORS,
-            ...(settingsRow.custom_colors || {}),
+            ...(typeof settingsRow.custom_colors === 'object' && settingsRow.custom_colors !== null ? settingsRow.custom_colors : {}),
           },
         } as OverlaySettings,
         error: tokenErr,
@@ -634,6 +636,8 @@ export async function getOverlaySettingsFromSupabase(
         show_live_badge: true,
         border_radius: 22,
         enable_animation: true,
+        animation_speed: 'normal',
+        dashboard_ui_theme: 'neobrutalism',
         allow_promotion: false,
         custom_colors: { ...DEFAULT_OVERLAY_COLORS },
         created_at: new Date().toISOString(),
@@ -648,6 +652,163 @@ export async function getOverlaySettingsFromSupabase(
     return { settings: null, error: msg };
   }
 }
+
+/**
+ * Whitelist of columns present in public.overlay_settings table.
+ * Includes custom_colors (JSONB), animation_speed (TEXT), and dashboard_ui_theme (TEXT).
+ */
+export const SUPABASE_OVERLAY_SETTINGS_COLUMNS = [
+  'title',
+  'theme',
+  'font_size',
+  'max_visible_players',
+  'animation',
+  'opacity',
+  'card_size',
+  'spacing',
+  'sociabuzz_url',
+  'min_donation',
+  'vip_min_donation',
+  'vvip_min_donation',
+  'max_queue_limit',
+  'sound_alert',
+  'allow_free_queue',
+  'live_badge_text',
+  'hide_playing_in_overlay',
+  'panel_width',
+  'show_id',
+  'show_vip_badge',
+  'show_live_badge',
+  'border_radius',
+  'enable_animation',
+  'allow_promotion',
+  'webhook_key',
+  'webhook_secret',
+  'streamer_token',
+  'custom_colors',
+  'animation_speed',
+  'dashboard_ui_theme',
+] as const;
+
+export function filterSupabaseOverlaySettings(raw: Partial<OverlaySettings>): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {};
+  for (const col of SUPABASE_OVERLAY_SETTINGS_COLUMNS) {
+    if (raw[col] !== undefined) {
+      if (col === 'custom_colors') {
+        if (typeof raw.custom_colors === 'object' && raw.custom_colors !== null) {
+          filtered.custom_colors = raw.custom_colors;
+        }
+      } else if (col === 'animation_speed') {
+        filtered.animation_speed = String(raw.animation_speed);
+      } else if (col === 'dashboard_ui_theme') {
+        filtered.dashboard_ui_theme = String(raw.dashboard_ui_theme);
+      } else {
+        filtered[col] = raw[col];
+      }
+    }
+  }
+  return filtered;
+}
+
+/**
+ * Persists overlay settings to Supabase with column whitelisting, error checking, and profile name syncing.
+ * Handles both post-migration (persisting custom_colors, animation_speed, dashboard_ui_theme directly to Supabase)
+ * and graceful fallback if the SQL migration has not yet been executed in Supabase SQL Editor.
+ */
+export async function saveOverlaySettingsToSupabase(
+  profileIdOrAuthId: string,
+  updates: Partial<OverlaySettings>
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase || !profileIdOrAuthId) {
+    return { success: false, error: 'Supabase client belum terkonfigurasi atau User ID tidak valid.' };
+  }
+
+  try {
+    const payload = filterSupabaseOverlaySettings(updates);
+    payload.updated_at = new Date().toISOString();
+
+    // 1. Sync streamer_name to profiles table if present
+    if (updates.streamer_name && typeof updates.streamer_name === 'string' && updates.streamer_name.trim().length > 0) {
+      const cleanName = updates.streamer_name.trim();
+      const targetQuery = isUUID(profileIdOrAuthId)
+        ? supabase.from('profiles').update({ name: cleanName, updated_at: new Date().toISOString() }).or(`id.eq.${profileIdOrAuthId},auth_user_id.eq.${profileIdOrAuthId}`)
+        : supabase.from('profiles').update({ name: cleanName, updated_at: new Date().toISOString() }).eq('id', profileIdOrAuthId);
+
+      const { error: profErr } = await targetQuery;
+      if (profErr) {
+        console.warn('[Supabase Profiles Update Notice]', profErr.message);
+      }
+    }
+
+    // 2. Try updating overlay_settings by user_id
+    const idsToSearch = Array.from(new Set([profileIdOrAuthId].filter(Boolean)));
+    let updateSuccess = false;
+    let lastError: string | undefined = undefined;
+
+    for (const searchId of idsToSearch) {
+      let { data, error } = await supabase
+        .from('overlay_settings')
+        .update(payload)
+        .eq('user_id', searchId)
+        .select('id');
+
+      // Graceful fallback if database schema does not have new columns yet (Postgres code 42703)
+      if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+        console.warn(
+          '[Supabase Migration Notice] Columns custom_colors/animation_speed/dashboard_ui_theme not yet migrated in Supabase. Executing core update...'
+        );
+        const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = payload;
+        const fallbackRes = await supabase
+          .from('overlay_settings')
+          .update(corePayload)
+          .eq('user_id', searchId)
+          .select('id');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
+      if (error) {
+        console.error('[Supabase overlay_settings update error]', error);
+        lastError = error.message;
+      } else if (data && data.length > 0) {
+        updateSuccess = true;
+        break;
+      }
+    }
+
+    // 3. If update did not find an existing row, attempt upsert
+    if (!updateSuccess) {
+      const upsertId = idsToSearch[0];
+      let { error: upsertErr } = await supabase
+        .from('overlay_settings')
+        .upsert({ ...payload, user_id: upsertId }, { onConflict: 'user_id' });
+
+      // Fallback for upsert if columns missing
+      if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('does not exist'))) {
+        console.warn(
+          '[Supabase Migration Notice] Columns not yet in schema for upsert. Executing core upsert...'
+        );
+        const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = payload;
+        const fallbackUpsertRes = await supabase
+          .from('overlay_settings')
+          .upsert({ ...corePayload, user_id: upsertId }, { onConflict: 'user_id' });
+        upsertErr = fallbackUpsertRes.error;
+      }
+
+      if (upsertErr) {
+        console.error('[Supabase overlay_settings upsert error]', upsertErr);
+        return { success: false, error: upsertErr.message };
+      }
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke database Supabase.';
+    console.error('[Supabase saveOverlaySettings Exception]', msg);
+    return { success: false, error: msg };
+  }
+}
+
 
 /**
  * Synchronizes Supabase authenticated user with the public.profiles table.

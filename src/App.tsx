@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { OverlayView } from './components/OverlayView';
 import { ViewerJoinView } from './components/ViewerJoinView';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -223,7 +223,7 @@ function AppContent() {
     setCurrentPath(path);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await signOut();
     if (sessionToken) {
       try {
@@ -239,7 +239,7 @@ function AppContent() {
     localStorage.removeItem('streamer_user_data');
     setSessionToken(null);
     setCurrentUser(null);
-  };
+  }, [sessionToken]);
 
   // 1. Overlay Route: /overlay/:token (Strictly public, no auth required, no dashboard UI, works in Incognito)
   if (currentPath.startsWith('/overlay')) {

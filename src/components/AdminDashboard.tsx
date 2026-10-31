@@ -56,7 +56,13 @@ import { OverlayView } from './OverlayView';
 import { OverlayColorCustomizer } from './OverlayColorCustomizer';
 import { useTheme } from '../context/ThemeContext';
 import { ThemeHeaderControls } from './ThemeHeaderControls';
-import { supabase, isSupabaseConfigured, getOverlaySettingsFromSupabase, regenerateOverlayTokenInSupabase } from '../lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  getOverlaySettingsFromSupabase,
+  saveOverlaySettingsToSupabase,
+  regenerateOverlayTokenInSupabase,
+} from '../lib/supabase';
 
 interface AdminDashboardProps {
   user?: UserProfile;
@@ -227,6 +233,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Token error state
   const [tokenError, setTokenError] = useState<string | null>(null);
   const isFetchingRef = React.useRef(false);
+  const onLogoutRef = useRef(onLogout);
+  useEffect(() => {
+    onLogoutRef.current = onLogout;
+  }, [onLogout]);
 
   // Fetch full dashboard
   const fetchDashboard = useCallback(async () => {
@@ -256,7 +266,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         dashboardWebhooks = data.webhook_events || [];
       } else if (res.status === 401 && !user) {
         isFetchingRef.current = false;
-        onLogout();
+        onLogoutRef.current();
         return;
       }
     } catch (e) {
@@ -293,8 +303,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (dashboardSettings) {
       setSettings(dashboardSettings);
       // Rules 1, 2 & 3: settingsForm is the single source of truth during editing.
-      // Server data ONLY populates settingsForm on the very first initialization if form is not dirty.
-      if (!isInitializedRef.current && !isDirtyRef.current) {
+      // Server data ONLY populates settingsForm on the very first initialization.
+      // After initialization, fetchDashboard never touches settingsForm.
+      if (!isInitializedRef.current) {
         setSettingsForm(dashboardSettings);
         isInitializedRef.current = true;
       }
@@ -313,7 +324,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setLoading(false);
     isFetchingRef.current = false;
-  }, [sessionToken, adminPin, onLogout, user?.id]);
+  }, [sessionToken, adminPin, user?.id]);
 
   // Fetch admin platform data
   const fetchAdminData = useCallback(async () => {
@@ -507,38 +518,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (e) e.preventDefault();
     setSavingSettings(true);
     setSettingsSuccess('');
-    try {
-      const res = await callAdminApi('/api/admin/settings', settingsForm);
-      setSettings(res.settings);
-      setSettingsForm(res.settings);
-      isDirtyRef.current = false;
-      setIsDirty(false);
-      setSettingsSuccess('Pengaturan berhasil disimpan!');
-      showNotification('Pengaturan berhasil disimpan!', 'success');
-      setTimeout(() => setSettingsSuccess(''), 3000);
 
-      // Sync to Supabase if configured and user is signed in
+    // Capture snapshot of current form state before network request
+    const formSnapshot = { ...settingsForm };
+
+    try {
+      // 1. Persist via server API (which writes to Supabase with column whitelist, updates profiles.name, and broadcasts SSE)
+      const res = await callAdminApi('/api/admin/settings', formSnapshot);
+      if (!res || !res.settings) {
+        throw new Error('Server tidak mengembalikan respons yang valid saat menyimpan pengaturan.');
+      }
+
+      // 2. Direct client-side write to Supabase as dual guarantee if user is signed into Supabase
       if (isSupabaseConfigured() && supabase && user?.id) {
-        try {
-          await supabase
-            .from('overlay_settings')
-            .upsert(
-              {
-                ...res.settings,
-                user_id: user.id,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'user_id' }
-            );
-        } catch (supaErr) {
-          console.warn('[Supabase Sync] overlay_settings upsert notice:', supaErr);
+        const targetId = user.id || user.auth_user_id;
+        if (targetId) {
+          const directSaveRes = await saveOverlaySettingsToSupabase(targetId, formSnapshot);
+          if (!directSaveRes.success && directSaveRes.error) {
+            console.warn('[Direct Supabase Sync Notice]', directSaveRes.error);
+          }
         }
       }
+
+      // 3. Update dashboard settings
+      setSettings(res.settings);
+
+      // 4. Resolve race conditions: merge response with any in-flight edits user typed during save
+      setSettingsForm((current) => {
+        const merged: Partial<OverlaySettings> = { ...res.settings };
+        let anyInFlightEdits = false;
+        for (const key of Object.keys(current) as (keyof OverlaySettings)[]) {
+          if (current[key] !== formSnapshot[key]) {
+            // User typed this field while network request was in flight! Preserve user's edit!
+            (merged as any)[key] = current[key];
+            anyInFlightEdits = true;
+          }
+        }
+        isDirtyRef.current = anyInFlightEdits;
+        setIsDirty(anyInFlightEdits);
+        return merged;
+      });
+
+      setSettingsSuccess('Pengaturan berhasil disimpan!');
+      showNotification('Pengaturan berhasil disimpan ke database!', 'success');
+      setTimeout(() => setSettingsSuccess(''), 3000);
     } catch (err: unknown) {
-      showNotification(
-        err instanceof Error ? err.message : 'Gagal menyimpan pengaturan',
-        'error'
-      );
+      const errMsg =
+        err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke database';
+      showNotification(errMsg, 'error');
     } finally {
       setSavingSettings(false);
     }

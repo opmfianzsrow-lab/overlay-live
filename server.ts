@@ -12,7 +12,8 @@ import { createServer as createViteServer } from 'vite';
 import { db } from './src/server/db.ts';
 import { sociabuzzService } from './src/server/sociabuzz.ts';
 import { realtimeHub } from './src/server/realtime.ts';
-import type { UserProfile } from './src/types/queue.ts';
+import type { UserProfile, OverlaySettings, OverlayCustomColors } from './src/types/queue.ts';
+import { DEFAULT_OVERLAY_COLORS } from './src/types/queue.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +21,62 @@ const __dirname = path.dirname(__filename);
 const PORT = 3000;
 const app = express();
 
-const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createClient(process.env.VITE_SUPABASE_URL || 'https://ddznezhftcwmftdrnyso.supabase.co', process.env.SUPABASE_SERVICE_ROLE_KEY) : null;
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://ddznezhftcwmftdrnyso.supabase.co';
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkem5lemhmdGN3bWZ0ZHJueXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMDAzMTgsImV4cCI6MjEwODU3NjMxOH0.XEUvnliZN_7VJhHDHv_DPrtUO6Q81EkYpsPNZulz3rI';
+
+const supabaseServer = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY) : supabaseServer;
+
+function getSupabaseClient(sessionToken?: string) {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return supabaseAdmin;
+  }
+  if (sessionToken && sessionToken.startsWith('eyJ')) {
+    return createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false },
+      global: {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      },
+    });
+  }
+  return supabaseServer;
+}
+
+const OVERLAY_SETTINGS_COLUMNS = new Set([
+  'title',
+  'theme',
+  'font_size',
+  'max_visible_players',
+  'animation',
+  'opacity',
+  'card_size',
+  'spacing',
+  'sociabuzz_url',
+  'min_donation',
+  'vip_min_donation',
+  'vvip_min_donation',
+  'max_queue_limit',
+  'sound_alert',
+  'allow_free_queue',
+  'live_badge_text',
+  'hide_playing_in_overlay',
+  'panel_width',
+  'show_id',
+  'show_vip_badge',
+  'show_live_badge',
+  'border_radius',
+  'enable_animation',
+  'allow_promotion',
+  'webhook_key',
+  'webhook_secret',
+  'streamer_token',
+  'custom_colors',
+  'animation_speed',
+  'dashboard_ui_theme',
+]);
 
 // Middlewares
 app.use(cors());
@@ -194,10 +250,8 @@ app.get('/api/realtime', (req, res) => {
 // Get public overlay configuration and active queue (User-Specific by Token)
 app.get('/api/public/overlay/:token', async (req, res) => {
   const { token } = req.params;
-  console.log(`[DEBUG] Overlay request for token: ${token}`);
   
   if (!supabaseAdmin) {
-    console.log('[DEBUG] supabaseAdmin not configured, using local DB fallback');
     // Fallback if Supabase not configured
     const userId = db.getUserIdByOverlayToken(token);
     if (!userId) {
@@ -207,41 +261,88 @@ app.get('/api/public/overlay/:token', async (req, res) => {
     const settings = db.getSettings(userId);
     const activeQueue = db.getActiveQueue(userId);
     const platformPromo = db.getPlatformPromotion();
-    res.json({ settings, promotion: (settings.allow_promotion && platformPromo.enabled) ? platformPromo : null, queue: activeQueue });
+
+    // Security check: Never leak webhook_key or webhook_secret to public client
+    const safeSettings: Record<string, unknown> = { ...settings };
+    delete safeSettings.webhook_key;
+    delete safeSettings.webhook_secret;
+
+    res.json({
+      settings: safeSettings,
+      promotion: (settings.allow_promotion && platformPromo.enabled) ? platformPromo : null,
+      queue: activeQueue,
+    });
     return;
   }
 
   // 1. Get user_id by token
-  const { data: tokData, error: tokErr } = await supabaseAdmin.from('overlay_tokens').select('user_id').eq('token', token).is('revoked_at', null).maybeSingle();
+  const { data: tokData, error: tokErr } = await supabaseAdmin
+    .from('overlay_tokens')
+    .select('user_id')
+    .eq('token', token)
+    .is('revoked_at', null)
+    .maybeSingle();
   
   if (tokErr) {
     console.error('[DEBUG] Token query error:', tokErr);
   }
   if (!tokData) {
-    console.log('[DEBUG] Token not found or revoked for token:', token);
     res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
     return;
   }
   const userId = tokData.user_id;
-  console.log('[DEBUG] Found userId:', userId);
 
-  // 2. Get settings
-  const { data: settings, error: setErr } = await supabaseAdmin.from('overlay_settings').select('*').eq('user_id', userId).maybeSingle();
+  // 2. Get settings from Supabase
+  const { data: rawSettings, error: setErr } = await supabaseAdmin
+    .from('overlay_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
   if (setErr) {
     console.error('[DEBUG] Settings query error:', setErr);
   }
-  console.log('[DEBUG] Found settings:', settings);
+
+  const localSettings = db.getSettings(userId);
+  const supaColors = (rawSettings && typeof rawSettings.custom_colors === 'object' && rawSettings.custom_colors !== null)
+    ? rawSettings.custom_colors
+    : (localSettings.custom_colors || {});
+
+  const safeSettings: Record<string, unknown> = {
+    ...localSettings,
+    ...(rawSettings || {}),
+    animation_speed: rawSettings?.animation_speed || localSettings.animation_speed || 'normal',
+    dashboard_ui_theme: rawSettings?.dashboard_ui_theme || localSettings.dashboard_ui_theme || 'neobrutalism',
+    custom_colors: {
+      ...DEFAULT_OVERLAY_COLORS,
+      ...supaColors,
+    },
+  };
+
+  // Security check: Never leak webhook_key or webhook_secret to public client
+  delete safeSettings.webhook_key;
+  delete safeSettings.webhook_secret;
 
   // 3. Get queue
-  const { data: activeQueue, error: qErr } = await supabaseAdmin.from('queue_players').select('*').eq('user_id', userId).in('status', ['QUEUED', 'WAITING']).order('position', { ascending: true });
+  const { data: activeQueue, error: qErr } = await supabaseAdmin
+    .from('queue_players')
+    .select('*')
+    .eq('user_id', userId)
+    .in('status', ['QUEUED', 'WAITING'])
+    .order('position', { ascending: true });
   if (qErr) {
     console.error('[DEBUG] Queue query error:', qErr);
   }
 
+  const queueToReturn = (activeQueue && activeQueue.length > 0)
+    ? activeQueue
+    : db.getActiveQueue(userId);
+
+  const platformPromo = db.getPlatformPromotion();
+
   res.json({
-    settings: settings || {},
-    queue: activeQueue || [],
-    promotion: null, // Placeholder for promo
+    settings: safeSettings,
+    queue: queueToReturn,
+    promotion: (safeSettings.allow_promotion && platformPromo.enabled) ? platformPromo : null,
   });
 });
 
@@ -392,12 +493,75 @@ app.post('/api/webhooks/sociabuzz/:streamerKey', handleSociabuzzWebhook);
    STREAMER PROTECTED DASHBOARD ROUTES (USER DATA ISOLATION)
    ========================================================================== */
 
-// Full Dashboard data for logged in streamer
-app.get('/api/admin/dashboard', requireAuth, (req: AuthenticatedRequest, res) => {
+// Full Dashboard data for logged in streamer (Supabase as primary source of truth)
+app.get('/api/admin/dashboard', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
+  const authUserId = req.user!.auth_user_id;
+  const sessionToken = req.headers['authorization']?.replace('Bearer ', '').trim();
+  const client = getSupabaseClient(sessionToken);
+
+  let supaSettings: Record<string, unknown> | null = null;
+  let streamerName: string | undefined = undefined;
+
+  try {
+    const candidateIds = Array.from(new Set([userId, authUserId].filter(Boolean) as string[]));
+    for (const searchId of candidateIds) {
+      const { data, error } = await client
+        .from('overlay_settings')
+        .select('*')
+        .eq('user_id', searchId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[Supabase Dashboard Settings Query Error]', error);
+      } else if (data) {
+        supaSettings = data;
+        break;
+      }
+    }
+
+    // Also get streamer name from profiles table
+    for (const searchId of candidateIds) {
+      const { data: prof } = await client
+        .from('profiles')
+        .select('name')
+        .or(`id.eq.${searchId},auth_user_id.eq.${searchId}`)
+        .maybeSingle();
+      if (prof?.name) {
+        streamerName = prof.name;
+        break;
+      }
+    }
+  } catch (err) {
+    console.warn('[Supabase Dashboard Fetch Notice]', err);
+  }
+
+  // Local settings as baseline / fallback
+  const localSettings = db.getSettings(userId);
+  const supaColors = (supaSettings && typeof supaSettings.custom_colors === 'object' && supaSettings.custom_colors !== null)
+    ? (supaSettings.custom_colors as OverlayCustomColors)
+    : (localSettings.custom_colors || {});
+
+  const mergedSettings: OverlaySettings = {
+    ...localSettings,
+    ...(supaSettings || {}),
+    streamer_name: streamerName || (supaSettings?.streamer_name as string) || localSettings.streamer_name || req.user?.name,
+    animation_speed: (supaSettings?.animation_speed as 'slow' | 'normal' | 'fast') || localSettings.animation_speed || 'normal',
+    dashboard_ui_theme: (supaSettings?.dashboard_ui_theme as 'neobrutalism' | 'dark') || localSettings.dashboard_ui_theme || 'neobrutalism',
+    custom_colors: {
+      ...DEFAULT_OVERLAY_COLORS,
+      ...supaColors,
+    },
+  };
+
+  // Sync Supabase settings to local cache
+  if (supaSettings) {
+    db.updateSettings(userId, mergedSettings);
+  }
+
   res.json({
     user: req.user,
-    settings: db.getSettings(userId),
+    settings: mergedSettings,
     queue: db.getActiveQueue(userId),
     donations: db.getDonations(userId),
     stats: db.getStats(userId),
@@ -513,9 +677,123 @@ app.post('/api/admin/queue/manual-add', requireAuth, (req: AuthenticatedRequest,
   }
 });
 
-// Update Settings
-app.post('/api/admin/settings', requireAuth, (req: AuthenticatedRequest, res) => {
+// Update Settings (Writes directly to Supabase with column whitelisting, error checking, and user isolation)
+app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
+  const authUserId = req.user!.auth_user_id;
+  const sessionToken = req.headers['authorization']?.replace('Bearer ', '').trim();
+  const client = getSupabaseClient(sessionToken);
+
+  // 1. Whitelist fields for Supabase overlay_settings
+  const supaPayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  for (const [key, value] of Object.entries(req.body)) {
+    if (OVERLAY_SETTINGS_COLUMNS.has(key)) {
+      if (key === 'custom_colors') {
+        if (typeof value === 'object' && value !== null) {
+          supaPayload.custom_colors = value;
+        }
+      } else if (key === 'animation_speed') {
+        supaPayload.animation_speed = String(value);
+      } else if (key === 'dashboard_ui_theme') {
+        supaPayload.dashboard_ui_theme = String(value);
+      } else {
+        supaPayload[key] = value;
+      }
+    }
+  }
+
+  // 2. Persist to Supabase overlay_settings
+  const candidateIds = Array.from(new Set([userId, authUserId].filter(Boolean) as string[]));
+  let supabasePersistError: string | null = null;
+
+  try {
+    let updated = false;
+    for (const searchId of candidateIds) {
+      let { data, error } = await client
+        .from('overlay_settings')
+        .update(supaPayload)
+        .eq('user_id', searchId)
+        .select('id');
+
+      // Graceful fallback if database schema does not have new columns yet (Postgres code 42703)
+      if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+        console.warn(
+          '[Supabase Migration Notice] Columns custom_colors/animation_speed/dashboard_ui_theme not yet migrated in Supabase. Executing core update...'
+        );
+        const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = supaPayload;
+        const fallbackRes = await client
+          .from('overlay_settings')
+          .update(corePayload)
+          .eq('user_id', searchId)
+          .select('id');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
+      if (error) {
+        console.error('[Supabase Settings Update Error]', error);
+        supabasePersistError = error.message;
+      } else if (data && data.length > 0) {
+        updated = true;
+        supabasePersistError = null;
+        break;
+      }
+    }
+
+    if (!updated && candidateIds.length > 0) {
+      const upsertId = candidateIds[0];
+      let { error: upsertErr } = await client
+        .from('overlay_settings')
+        .upsert({ ...supaPayload, user_id: upsertId }, { onConflict: 'user_id' });
+
+      // Fallback for upsert if columns missing
+      if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('does not exist'))) {
+        console.warn(
+          '[Supabase Migration Notice] Columns not yet in schema for upsert. Executing core upsert...'
+        );
+        const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = supaPayload;
+        const fallbackUpsertRes = await client
+          .from('overlay_settings')
+          .upsert({ ...corePayload, user_id: upsertId }, { onConflict: 'user_id' });
+        upsertErr = fallbackUpsertRes.error;
+      }
+
+      if (upsertErr) {
+        console.error('[Supabase Settings Upsert Error]', upsertErr);
+        supabasePersistError = upsertErr.message;
+      }
+    }
+
+    // 3. If streamer_name provided, sync to profiles.name in Supabase
+    if (req.body.streamer_name && typeof req.body.streamer_name === 'string') {
+      const cleanName = req.body.streamer_name.trim();
+      for (const searchId of candidateIds) {
+        try {
+          await client
+            .from('profiles')
+            .update({ name: cleanName, updated_at: new Date().toISOString() })
+            .or(`id.eq.${searchId},auth_user_id.eq.${searchId}`);
+        } catch (e: unknown) {
+          console.warn('[Supabase Profile Name Update Notice]', e);
+        }
+      }
+    }
+  } catch (err: unknown) {
+    supabasePersistError = err instanceof Error ? err.message : 'Kesalahan koneksi database';
+    console.error('[Supabase Settings Exception]', err);
+  }
+
+  // Return 500 error if Supabase schema or connection failed
+  if (supabasePersistError && !supabasePersistError.includes('violates row-level security')) {
+    res.status(500).json({
+      error: `Gagal menyimpan ke database Supabase: ${supabasePersistError}`,
+    });
+    return;
+  }
+
+  // 4. Update local memory cache and broadcast change
   const updated = db.updateSettings(userId, req.body);
   realtimeHub.broadcastQueueChange(userId, 'settings_updated');
   res.json({ success: true, settings: updated });

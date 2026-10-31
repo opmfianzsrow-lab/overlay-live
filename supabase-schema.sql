@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS public.overlay_settings (
   enable_animation BOOLEAN NOT NULL DEFAULT true,
   allow_promotion BOOLEAN NOT NULL DEFAULT false,
   custom_colors JSONB NOT NULL DEFAULT '{}'::jsonb,
+  animation_speed TEXT NOT NULL DEFAULT 'normal',
+  dashboard_ui_theme TEXT NOT NULL DEFAULT 'neobrutalism',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -332,20 +334,11 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ==============================================================================
--- SAFE MIGRATION: ADD custom_colors COLUMN TO overlay_settings (NON-DESTRUCTIVE)
--- Can be executed safely in existing Supabase projects without losing data
+-- SAFE MIGRATION: ADD custom_colors, animation_speed, dashboard_ui_theme (NON-DESTRUCTIVE)
+-- Execute this snippet in Supabase SQL Editor for existing database projects:
 -- ==============================================================================
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-    AND table_name = 'overlay_settings' 
-    AND column_name = 'custom_colors'
-  ) THEN
-    ALTER TABLE public.overlay_settings 
-      ADD COLUMN custom_colors JSONB NOT NULL DEFAULT '{}'::jsonb;
-    RAISE NOTICE 'Added custom_colors column to public.overlay_settings successfully.';
-  END IF;
-END $$;
+ALTER TABLE public.overlay_settings
+  ADD COLUMN IF NOT EXISTS custom_colors JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS animation_speed TEXT NOT NULL DEFAULT 'normal',
+  ADD COLUMN IF NOT EXISTS dashboard_ui_theme TEXT NOT NULL DEFAULT 'neobrutalism';
 

@@ -29,6 +29,26 @@
       "role": "streamer",
       "created_at": "2026-10-31T06:53:40.576Z",
       "updated_at": "2026-10-31T06:53:40.576Z"
+    },
+    {
+      "id": "usr_ae9170859800",
+      "auth_user_id": "usr_test_audit_fix",
+      "email": "test_audit@example.com",
+      "name": "Streamer Audit Tester",
+      "avatar_url": "https://api.dicebear.com/7.x/bottts/svg?seed=test_audit%40example.com",
+      "role": "streamer",
+      "created_at": "2026-10-31T07:29:33.520Z",
+      "updated_at": "2026-10-31T07:29:33.520Z"
+    },
+    {
+      "id": "usr_79f4fab563a5",
+      "auth_user_id": "9f1a9879-cb7c-4a30-8d5f-1e0aa025469f",
+      "email": "streamer_existing@example.com",
+      "name": "Streamer Supabase Exists",
+      "avatar_url": "https://api.dicebear.com/7.x/bottts/svg?seed=streamer_existing%40example.com",
+      "role": "streamer",
+      "created_at": "2026-10-31T07:29:52.675Z",
+      "updated_at": "2026-10-31T07:29:52.675Z"
     }
   ],
   "overlay_tokens": [
@@ -49,6 +69,18 @@
       "user_id": "usr_9121171c0c08",
       "token": "1v1_6cdc988cfe80837768d8cb72",
       "created_at": "2026-10-31T06:53:40.576Z"
+    },
+    {
+      "id": "tok_d7037a8f5584",
+      "user_id": "usr_ae9170859800",
+      "token": "1v1_6b35dd15735a2de414620a4f",
+      "created_at": "2026-10-31T07:29:33.520Z"
+    },
+    {
+      "id": "tok_c5b5f102e249",
+      "user_id": "usr_79f4fab563a5",
+      "token": "1v1_3c745698b0d74862097141ab",
+      "created_at": "2026-10-31T07:29:52.675Z"
     }
   ],
   "settings": {
@@ -195,6 +227,93 @@
       },
       "created_at": "2026-10-31T06:53:40.576Z",
       "updated_at": "2026-10-31T06:54:06.708Z"
+    },
+    "usr_ae9170859800": {
+      "id": "settings_usr_ae9170859800",
+      "user_id": "usr_ae9170859800",
+      "streamer_token": "1v1_6b35dd15735a2de414620a4f",
+      "webhook_key": "sb_wh_1f597e3e819a",
+      "webhook_secret": "sb_sec_6eaa3bb1f679fdcf898d",
+      "title": "TEST ANTRIAN",
+      "theme": "obsidian",
+      "font_size": "medium",
+      "max_visible_players": 5,
+      "animation": "smooth",
+      "opacity": 96,
+      "card_size": "normal",
+      "spacing": 8,
+      "sociabuzz_url": "https://sociabuzz.com/test_streamer",
+      "min_donation": 15000,
+      "vip_min_donation": 25000,
+      "vvip_min_donation": 50000,
+      "max_queue_limit": 50,
+      "sound_alert": true,
+      "allow_free_queue": false,
+      "live_badge_text": "LIVE",
+      "hide_playing_in_overlay": false,
+      "dashboard_ui_theme": "dark",
+      "panel_width": 440,
+      "show_id": true,
+      "show_vip_badge": true,
+      "show_live_badge": true,
+      "border_radius": 22,
+      "enable_animation": true,
+      "animation_speed": "fast",
+      "allow_promotion": false,
+      "custom_colors": {
+        "accent_color": "#ff0055"
+      },
+      "created_at": "2026-10-31T07:29:33.520Z",
+      "updated_at": "2026-10-31T07:29:35.122Z",
+      "streamer_name": "Streamer Budi Perkasa"
+    },
+    "usr_79f4fab563a5": {
+      "id": "settings_usr_79f4fab563a5",
+      "user_id": "usr_79f4fab563a5",
+      "streamer_token": "1v1_3c745698b0d74862097141ab",
+      "webhook_key": "sb_wh_3487779f4bd2",
+      "webhook_secret": "sb_sec_ae20a123e32370e57f37",
+      "title": "ANTRIAN BY1",
+      "theme": "obsidian",
+      "font_size": "medium",
+      "max_visible_players": 5,
+      "animation": "smooth",
+      "opacity": 96,
+      "card_size": "normal",
+      "spacing": 8,
+      "sociabuzz_url": "https://sociabuzz.com/streamer_existing",
+      "min_donation": 10000,
+      "vip_min_donation": 25000,
+      "vvip_min_donation": 50000,
+      "max_queue_limit": 50,
+      "sound_alert": true,
+      "allow_free_queue": false,
+      "live_badge_text": "LIVE",
+      "hide_playing_in_overlay": false,
+      "dashboard_ui_theme": "dark",
+      "panel_width": 440,
+      "show_id": true,
+      "show_vip_badge": true,
+      "show_live_badge": true,
+      "border_radius": 22,
+      "enable_animation": true,
+      "animation_speed": "normal",
+      "allow_promotion": false,
+      "custom_colors": {
+        "bg_primary": "#0c0c0e",
+        "header_bg": "#141418",
+        "card_bg": "#18181d",
+        "card_border": "#27272a",
+        "text_primary": "#f4f4f5",
+        "text_secondary": "#a1a1aa",
+        "accent_color": "#3b82f6",
+        "queue_number_color": "#ffffff",
+        "vip_badge_color": "#a855f7",
+        "vvip_badge_color": "#eab308",
+        "live_indicator_color": "#ef4444"
+      },
+      "created_at": "2026-10-31T07:29:52.675Z",
+      "updated_at": "2026-10-31T07:29:52.675Z"
     }
   },
   "players": [
@@ -259,6 +378,20 @@
   "webhook_events": [],
   "activity_logs": [
     {
+      "id": "log-1793431792675-0n34",
+      "user_id": "usr_79f4fab563a5",
+      "text": "Akun streamer baru terdaftar via Supabase Auth (streamer_existing@example.com)",
+      "type": "edit",
+      "timestamp": "2026-10-31T07:29:52.675Z"
+    },
+    {
+      "id": "log-1793431773521-vht4",
+      "user_id": "usr_ae9170859800",
+      "text": "Akun streamer baru terdaftar via Supabase Auth (test_audit@example.com)",
+      "type": "edit",
+      "timestamp": "2026-10-31T07:29:33.521Z"
+    },
+    {
       "id": "log-1793429620576-0y9g",
       "user_id": "usr_9121171c0c08",
       "text": "Akun streamer baru terdaftar via Supabase Auth (streamer.test@example.com)",
@@ -313,6 +446,14 @@
     "sess_1wGEqekWz0ffwt7siRUEviz-5jhFSXa1": {
       "user_id": "usr_9121171c0c08",
       "expires_at": 1796021620577
+    },
+    "sess_4yDmRm5O4zASR7B2tYkJxBSelxNhTWN7": {
+      "user_id": "usr_ae9170859800",
+      "expires_at": 1796023773522
+    },
+    "sess_aKDUBjMwRzWgLwdiXb7COaT7m6uvwNZq": {
+      "user_id": "usr_79f4fab563a5",
+      "expires_at": 1796023792676
     }
   },
   "platform_promotion": {

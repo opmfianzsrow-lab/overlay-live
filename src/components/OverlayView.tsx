@@ -260,6 +260,8 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
       show_live_badge: setData?.show_live_badge !== false,
       border_radius: setData?.border_radius || 22,
       enable_animation: setData?.enable_animation !== false,
+      animation_speed: setData?.animation_speed || 'normal',
+      dashboard_ui_theme: setData?.dashboard_ui_theme || 'neobrutalism',
       custom_colors: {
         ...DEFAULT_OVERLAY_COLORS,
         ...(setData?.custom_colors || {}),
