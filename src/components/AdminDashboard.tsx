@@ -347,7 +347,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const payload = JSON.parse(e.data);
         if (payload.settings) {
           setSettings(payload.settings);
-          setSettingsForm(payload.settings);
         }
         if (payload.queue) setQueue(payload.queue);
         if (payload.stats) setStats(payload.stats);
@@ -361,7 +360,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const payload = JSON.parse(e.data);
         if (payload.settings) {
           setSettings(payload.settings);
-          setSettingsForm(payload.settings);
         }
         if (payload.queue) setQueue(payload.queue);
         if (payload.stats) setStats(payload.stats);
