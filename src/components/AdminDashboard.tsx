@@ -211,6 +211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Token error state
   const [tokenError, setTokenError] = useState<string | null>(null);
   const isFetchingRef = React.useRef(false);
+  const hasInitializedSettings = useRef(false);
 
   // Fetch full dashboard
   const fetchDashboard = useCallback(async () => {
@@ -276,7 +277,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (dashboardSettings) {
       setSettings(dashboardSettings);
-      setSettingsForm(dashboardSettings);
+      if (!hasInitializedSettings.current) {
+        setSettingsForm(dashboardSettings);
+        hasInitializedSettings.current = true;
+      }
       if (dashboardSettings.streamer_token && dashboardSettings.streamer_token !== 'TOKEN') {
         setTokenError(null);
       }
