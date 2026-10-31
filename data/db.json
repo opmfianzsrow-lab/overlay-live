@@ -19,6 +19,16 @@
       "role": "streamer",
       "created_at": "2026-10-30T11:30:40.463Z",
       "updated_at": "2026-10-30T11:30:40.463Z"
+    },
+    {
+      "id": "usr_9121171c0c08",
+      "auth_user_id": "test-streamer-uuid-1",
+      "email": "streamer.test@example.com",
+      "name": "StreamerTest",
+      "avatar_url": "https://api.dicebear.com/7.x/bottts/svg?seed=streamer.test%40example.com",
+      "role": "streamer",
+      "created_at": "2026-10-31T06:53:40.576Z",
+      "updated_at": "2026-10-31T06:53:40.576Z"
     }
   ],
   "overlay_tokens": [
@@ -33,6 +43,12 @@
       "user_id": "usr_f4bc781b3cec",
       "token": "1v1_5806d0eb14e177f309fb5842",
       "created_at": "2026-10-30T11:30:40.463Z"
+    },
+    {
+      "id": "tok_f67882a4034e",
+      "user_id": "usr_9121171c0c08",
+      "token": "1v1_6cdc988cfe80837768d8cb72",
+      "created_at": "2026-10-31T06:53:40.576Z"
     }
   ],
   "settings": {
@@ -131,6 +147,54 @@
       },
       "created_at": "2026-10-30T11:30:40.463Z",
       "updated_at": "2026-10-30T11:30:49.632Z"
+    },
+    "usr_9121171c0c08": {
+      "id": "settings_usr_9121171c0c08",
+      "user_id": "usr_9121171c0c08",
+      "streamer_token": "1v1_6cdc988cfe80837768d8cb72",
+      "webhook_key": "sb_wh_aa0c3612c249",
+      "webhook_secret": "sb_sec_8e1a84a86cdff42549c1",
+      "title": "TEST ANTRIAN",
+      "theme": "obsidian",
+      "font_size": "medium",
+      "max_visible_players": 5,
+      "animation": "smooth",
+      "opacity": 96,
+      "card_size": "normal",
+      "spacing": 8,
+      "sociabuzz_url": "https://sociabuzz.com/teststreamer",
+      "min_donation": 10000,
+      "vip_min_donation": 25000,
+      "vvip_min_donation": 50000,
+      "max_queue_limit": 50,
+      "sound_alert": true,
+      "allow_free_queue": false,
+      "live_badge_text": "LIVE",
+      "hide_playing_in_overlay": false,
+      "dashboard_ui_theme": "dark",
+      "panel_width": 440,
+      "show_id": true,
+      "show_vip_badge": true,
+      "show_live_badge": true,
+      "border_radius": 22,
+      "enable_animation": true,
+      "animation_speed": "normal",
+      "allow_promotion": false,
+      "custom_colors": {
+        "bg_primary": "#0c0c0e",
+        "header_bg": "#141418",
+        "card_bg": "#18181d",
+        "card_border": "#27272a",
+        "text_primary": "#f4f4f5",
+        "text_secondary": "#a1a1aa",
+        "accent_color": "#3b82f6",
+        "queue_number_color": "#ffffff",
+        "vip_badge_color": "#a855f7",
+        "vvip_badge_color": "#eab308",
+        "live_indicator_color": "#ef4444"
+      },
+      "created_at": "2026-10-31T06:53:40.576Z",
+      "updated_at": "2026-10-31T06:54:06.708Z"
     }
   },
   "players": [
@@ -195,6 +259,13 @@
   "webhook_events": [],
   "activity_logs": [
     {
+      "id": "log-1793429620576-0y9g",
+      "user_id": "usr_9121171c0c08",
+      "text": "Akun streamer baru terdaftar via Supabase Auth (streamer.test@example.com)",
+      "type": "edit",
+      "timestamp": "2026-10-31T06:53:40.576Z"
+    },
+    {
       "id": "log-1793359863058-cb94",
       "user_id": "usr_f4bc781b3cec",
       "text": "Bang Streamer (999999) masuk antrian #2 [VVIP]",
@@ -238,6 +309,10 @@
     "sess_0FiZtcMQVmcZ1-c8r_8CmC6fGlS4qIwx": {
       "user_id": "usr_f4bc781b3cec",
       "expires_at": 1795951840464
+    },
+    "sess_1wGEqekWz0ffwt7siRUEviz-5jhFSXa1": {
+      "user_id": "usr_9121171c0c08",
+      "expires_at": 1796021620577
     }
   },
   "platform_promotion": {

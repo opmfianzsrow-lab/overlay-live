@@ -109,10 +109,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
 
-  // Settings form state
+  // Settings form state (Client-side single source of truth during editing)
   const [settingsForm, setSettingsForm] = useState<Partial<OverlaySettings>>({});
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState('');
+  const isInitializedRef = useRef(false);
+  const isDirtyRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Dedicated field updater to prevent stale closures and track dirty state
+  const handleUpdateFormField = useCallback(
+    <K extends keyof OverlaySettings>(key: K, value: OverlaySettings[K]) => {
+      isDirtyRef.current = true;
+      setIsDirty(true);
+      setSettingsForm((prev) => ({
+        ...prev,
+        [key]: value,
+      }));
+    },
+    []
+  );
 
   // PIN change state
   const [newPin, setNewPin] = useState('');
@@ -211,7 +227,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Token error state
   const [tokenError, setTokenError] = useState<string | null>(null);
   const isFetchingRef = React.useRef(false);
-  const hasInitializedSettings = useRef(false);
 
   // Fetch full dashboard
   const fetchDashboard = useCallback(async () => {
@@ -277,9 +292,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (dashboardSettings) {
       setSettings(dashboardSettings);
-      if (!hasInitializedSettings.current) {
+      // Rules 1, 2 & 3: settingsForm is the single source of truth during editing.
+      // Server data ONLY populates settingsForm on the very first initialization if form is not dirty.
+      if (!isInitializedRef.current && !isDirtyRef.current) {
         setSettingsForm(dashboardSettings);
-        hasInitializedSettings.current = true;
+        isInitializedRef.current = true;
       }
       if (dashboardSettings.streamer_token && dashboardSettings.streamer_token !== 'TOKEN') {
         setTokenError(null);
@@ -296,7 +313,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setLoading(false);
     isFetchingRef.current = false;
-  }, [sessionToken, adminPin, onLogout, user]);
+  }, [sessionToken, adminPin, onLogout, user?.id]);
 
   // Fetch admin platform data
   const fetchAdminData = useCallback(async () => {
@@ -351,6 +368,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const payload = JSON.parse(e.data);
         if (payload.settings) {
           setSettings(payload.settings);
+          // Only initialize settingsForm if never initialized and user has not started editing
+          if (!isInitializedRef.current && !isDirtyRef.current) {
+            setSettingsForm(payload.settings);
+            isInitializedRef.current = true;
+          }
         }
         if (payload.queue) setQueue(payload.queue);
         if (payload.stats) setStats(payload.stats);
@@ -362,13 +384,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     eventSource.addEventListener('queue_update', (e) => {
       try {
         const payload = JSON.parse(e.data);
+        // Rule 4: queue_update only updates dashboard and queue data, NEVER settingsForm!
         if (payload.settings) {
           setSettings(payload.settings);
         }
         if (payload.queue) setQueue(payload.queue);
         if (payload.stats) setStats(payload.stats);
         if (payload.logs) setLogs(payload.logs);
-        // Refresh dashboard on webhook or donation events
+        // Refresh dashboard on webhook or donation events without overwriting settingsForm
         if (payload.reason?.includes('sociabuzz') || payload.reason?.includes('donation')) {
           fetchDashboard();
         }
@@ -488,6 +511,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const res = await callAdminApi('/api/admin/settings', settingsForm);
       setSettings(res.settings);
       setSettingsForm(res.settings);
+      isDirtyRef.current = false;
+      setIsDirty(false);
       setSettingsSuccess('Pengaturan berhasil disimpan!');
       showNotification('Pengaturan berhasil disimpan!', 'success');
       setTimeout(() => setSettingsSuccess(''), 3000);
@@ -520,6 +545,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleColorsChange = (newColors: OverlayCustomColors) => {
+    isDirtyRef.current = true;
+    setIsDirty(true);
     setSettingsForm((prev) => ({
       ...prev,
       custom_colors: newColors,
@@ -527,6 +554,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleResetColors = () => {
+    isDirtyRef.current = true;
+    setIsDirty(true);
     setSettingsForm((prev) => ({
       ...prev,
       custom_colors: { ...DEFAULT_OVERLAY_COLORS },
@@ -2347,13 +2376,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB 6: PENGATURAN (SETTINGS) */}
         {activeTab === 'settings' && (
           <div className="p-6 space-y-6 max-w-4xl">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white">
-                Pengaturan Sistem & Tampilan
-              </h2>
-              <p className="text-xs text-zinc-400 font-normal mt-0.5">
-                Sesuaikan gaya UI dashboard, link Sociabuzz, batas donasi, judul custom, dan PIN keamanan.
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-[-0.03em] text-white">
+                  Pengaturan Sistem & Tampilan
+                </h2>
+                <p className="text-xs text-zinc-400 font-normal mt-0.5">
+                  Sesuaikan gaya UI dashboard, link Sociabuzz, batas donasi, judul custom, dan PIN keamanan.
+                </p>
+              </div>
+              {isDirty && (
+                <span className="px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Perubahan belum disimpan</span>
+                </span>
+              )}
             </div>
 
             {settingsSuccess && (
@@ -2416,9 +2453,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="url"
                     required
                     value={settingsForm.sociabuzz_url || ''}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, sociabuzz_url: e.target.value })
-                    }
+                    onChange={(e) => handleUpdateFormField('sociabuzz_url', e.target.value)}
                     placeholder="https://sociabuzz.com/prostreamer"
                     className="apple-input text-xs font-mono w-full"
                   />
@@ -2436,9 +2471,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="number"
                       step={1000}
                       value={settingsForm.min_donation ?? 10000}
-                      onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, min_donation: Number(e.target.value) })
-                      }
+                      onChange={(e) => handleUpdateFormField('min_donation', Number(e.target.value))}
                       className="apple-input text-xs font-mono w-full"
                     />
                   </div>
@@ -2451,12 +2484,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="number"
                       step={1000}
                       value={settingsForm.vip_min_donation ?? 25000}
-                      onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          vip_min_donation: Number(e.target.value),
-                        })
-                      }
+                      onChange={(e) => handleUpdateFormField('vip_min_donation', Number(e.target.value))}
                       className="apple-input text-xs font-mono w-full"
                     />
                   </div>
@@ -2469,12 +2497,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="number"
                       step={1000}
                       value={settingsForm.vvip_min_donation ?? 50000}
-                      onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          vvip_min_donation: Number(e.target.value),
-                        })
-                      }
+                      onChange={(e) => handleUpdateFormField('vvip_min_donation', Number(e.target.value))}
                       className="apple-input text-xs font-mono w-full"
                     />
                   </div>
@@ -2485,9 +2508,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="checkbox"
                     id="free_queue"
                     checked={settingsForm.allow_free_queue || false}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, allow_free_queue: e.target.checked })
-                    }
+                    onChange={(e) => handleUpdateFormField('allow_free_queue', e.target.checked)}
                     className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                   />
                   <label
@@ -2524,7 +2545,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <input
                       type="text"
                       value={settingsForm.title || ''}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, title: e.target.value })}
+                      onChange={(e) => handleUpdateFormField('title', e.target.value)}
                       placeholder="Contoh: ANTRIAN BY1"
                       className="apple-input text-xs w-full"
                     />
@@ -2537,7 +2558,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           key={preset}
                           type="button"
-                          onClick={() => setSettingsForm({ ...settingsForm, title: preset })}
+                          onClick={() => handleUpdateFormField('title', preset)}
                           className={`px-2.5 py-1 rounded-full text-[10px] transition-all cursor-pointer ${
                             settingsForm.title === preset
                               ? 'bg-white text-black font-semibold shadow-sm'
@@ -2558,10 +2579,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <select
                       value={settingsForm.theme || 'obsidian'}
                       onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          theme: e.target.value as OverlaySettings['theme'],
-                        })
+                        handleUpdateFormField('theme', e.target.value as OverlaySettings['theme'])
                       }
                       className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
@@ -2583,10 +2601,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <select
                       value={settingsForm.font_size || 'medium'}
                       onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          font_size: e.target.value as OverlaySettings['font_size'],
-                        })
+                        handleUpdateFormField('font_size', e.target.value as OverlaySettings['font_size'])
                       }
                       className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
@@ -2603,10 +2618,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <select
                       value={settingsForm.card_size || 'normal'}
                       onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          card_size: e.target.value as OverlaySettings['card_size'],
-                        })
+                        handleUpdateFormField('card_size', e.target.value as OverlaySettings['card_size'])
                       }
                       className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
@@ -2626,10 +2638,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       max={12}
                       value={settingsForm.max_visible_players ?? 5}
                       onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          max_visible_players: Number(e.target.value),
-                        })
+                        handleUpdateFormField('max_visible_players', Number(e.target.value))
                       }
                       className="apple-input text-xs font-mono w-full"
                     />
@@ -2650,7 +2659,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     max={100}
                     value={settingsForm.opacity ?? 96}
                     onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, opacity: Number(e.target.value) })
+                      handleUpdateFormField('opacity', Number(e.target.value))
                     }
                     className="w-full accent-white cursor-pointer"
                   />
@@ -2674,7 +2683,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     max={20}
                     value={settingsForm.spacing ?? 8}
                     onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, spacing: Number(e.target.value) })
+                      handleUpdateFormField('spacing', Number(e.target.value))
                     }
                     className="w-full accent-white cursor-pointer"
                   />
@@ -2687,7 +2696,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id="sound_alert"
                     checked={settingsForm.sound_alert ?? true}
                     onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, sound_alert: e.target.checked })
+                      handleUpdateFormField('sound_alert', e.target.checked)
                     }
                     className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                   />
@@ -2715,7 +2724,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       max={600}
                       value={settingsForm.panel_width ?? 440}
                       onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, panel_width: Number(e.target.value) })
+                        handleUpdateFormField('panel_width', Number(e.target.value))
                       }
                       className="w-full accent-white cursor-pointer"
                     />
@@ -2734,7 +2743,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       max={32}
                       value={settingsForm.border_radius ?? 22}
                       onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, border_radius: Number(e.target.value) })
+                        handleUpdateFormField('border_radius', Number(e.target.value))
                       }
                       className="w-full accent-white cursor-pointer"
                     />
@@ -2749,7 +2758,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       id="show_id"
                       checked={settingsForm.show_id !== false}
                       onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, show_id: e.target.checked })
+                        handleUpdateFormField('show_id', e.target.checked)
                       }
                       className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                     />
@@ -2764,7 +2773,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       id="show_vip_badge"
                       checked={settingsForm.show_vip_badge !== false}
                       onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, show_vip_badge: e.target.checked })
+                        handleUpdateFormField('show_vip_badge', e.target.checked)
                       }
                       className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                     />
@@ -2779,7 +2788,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       id="show_live_badge"
                       checked={settingsForm.show_live_badge !== false}
                       onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, show_live_badge: e.target.checked })
+                        handleUpdateFormField('show_live_badge', e.target.checked)
                       }
                       className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                     />
@@ -2797,7 +2806,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       id="enable_animation"
                       checked={settingsForm.enable_animation !== false}
                       onChange={(e) =>
-                        setSettingsForm({ ...settingsForm, enable_animation: e.target.checked })
+                        handleUpdateFormField('enable_animation', e.target.checked)
                       }
                       className="w-4 h-4 rounded cursor-pointer accent-[#2997ff]"
                     />
@@ -2813,10 +2822,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <select
                       value={settingsForm.animation_speed || 'normal'}
                       onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          animation_speed: e.target.value as 'slow' | 'normal' | 'fast',
-                        })
+                        handleUpdateFormField('animation_speed', e.target.value as 'slow' | 'normal' | 'fast')
                       }
                       className="apple-input text-xs w-full bg-zinc-900 border border-white/[0.1] text-white"
                     >
@@ -2834,7 +2840,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id="hide_playing_in_overlay"
                     checked={settingsForm.hide_playing_in_overlay || false}
                     onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, hide_playing_in_overlay: e.target.checked })
+                      handleUpdateFormField('hide_playing_in_overlay', e.target.checked)
                     }
                     className="w-4 h-4 rounded cursor-pointer accent-[#2997ff] mt-0.5"
                   />
@@ -2859,7 +2865,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id="allow_promotion"
                     checked={settingsForm.allow_promotion || false}
                     onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, allow_promotion: e.target.checked })
+                      handleUpdateFormField('allow_promotion', e.target.checked)
                     }
                     className="w-4 h-4 rounded cursor-pointer accent-[#2997ff] mt-0.5"
                   />

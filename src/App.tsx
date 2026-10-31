@@ -256,35 +256,7 @@ function AppContent() {
     );
   }
 
-  // 2. Viewer Join Route: /join
-  if (currentPath === '/join') {
-    return (
-      <div className={`relative min-h-screen ${isLight ? 'theme-light text-zinc-900' : 'theme-dark text-white'}`}>
-        {/* Global Sumi-e Mountains Background */}
-        <AppBackground />
-        <ThemeCustomizerModal />
-
-        {/* Quick App Switcher Bar & Theme Controls */}
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-          <ThemeHeaderControls compact={false} />
-
-          <button
-            onClick={() => navigateTo('/')}
-            className={`apple-button-secondary text-xs py-2 px-3.5 flex items-center gap-2 rounded-full backdrop-blur-xl shadow-lg cursor-pointer ${
-              isLight ? 'bg-white/80 text-zinc-800 border-black/10' : 'bg-black/60 text-zinc-200 border-white/10'
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span className="font-medium">Dashboard Streamer</span>
-          </button>
-        </div>
-
-        <ViewerJoinView />
-      </div>
-    );
-  }
-
-  // 3. Admin Dashboard Route: / or /admin
+  // 2. Admin Dashboard & Viewer Join Routes
   return (
     <div
       className={`relative min-h-screen font-sans selection:bg-white/20 selection:text-white antialiased transition-colors duration-300 ${
@@ -382,20 +354,25 @@ function AppContent() {
 
       {/* Main View Container */}
       <div className="relative z-10">
-        {sessionToken && currentUser ? (
-          <AdminDashboard
-            user={currentUser}
-            sessionToken={sessionToken}
-            onLogout={handleLogout}
-          />
-        ) : (
-          <AdminLogin
-            onLoginSuccess={(user, token) => {
-              setCurrentUser(user);
-              setSessionToken(token);
-            }}
-          />
-        )}
+        <div style={{ display: currentPath === '/join' ? 'block' : 'none' }}>
+          <ViewerJoinView />
+        </div>
+        <div style={{ display: currentPath !== '/join' ? 'block' : 'none' }}>
+          {sessionToken && currentUser ? (
+            <AdminDashboard
+              user={currentUser}
+              sessionToken={sessionToken}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <AdminLogin
+              onLoginSuccess={(user, token) => {
+                setCurrentUser(user);
+                setSessionToken(token);
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

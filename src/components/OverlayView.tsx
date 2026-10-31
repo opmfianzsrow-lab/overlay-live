@@ -277,7 +277,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 
   // Connect to realtime SSE stream with Supabase fallback
   useEffect(() => {
-    if (isPreviewMode && previewQueue) return;
+    if (isPreviewMode) return;
 
     // Clean token string from URL or props
     const rawPath = typeof window !== 'undefined' ? window.location.pathname : '';
