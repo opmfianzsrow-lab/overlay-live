@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({ override: true });
 
@@ -18,6 +19,8 @@ const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 const app = express();
+
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createClient(process.env.VITE_SUPABASE_URL || 'https://ddznezhftcwmftdrnyso.supabase.co', process.env.SUPABASE_SERVICE_ROLE_KEY) : null;
 
 // Middlewares
 app.use(cors());
@@ -189,45 +192,42 @@ app.get('/api/realtime', (req, res) => {
 });
 
 // Get public overlay configuration and active queue (User-Specific by Token)
-app.get('/api/public/overlay/:token', (req, res) => {
+app.get('/api/public/overlay/:token', async (req, res) => {
   const { token } = req.params;
-  const userId = db.getUserIdByOverlayToken(token);
-
-  if (!userId) {
-    res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
+  
+  if (!supabaseAdmin) {
+    // Fallback if Supabase not configured
+    const userId = db.getUserIdByOverlayToken(token);
+    if (!userId) {
+      res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
+      return;
+    }
+    const settings = db.getSettings(userId);
+    const activeQueue = db.getActiveQueue(userId);
+    const platformPromo = db.getPlatformPromotion();
+    res.json({ settings, promotion: (settings.allow_promotion && platformPromo.enabled) ? platformPromo : null, queue: activeQueue });
     return;
   }
 
-  const settings = db.getSettings(userId);
-  const activeQueue = db.getActiveQueue(userId);
-  const platformPromo = db.getPlatformPromotion();
+  // 1. Get user_id by token
+  const { data: tokData } = await supabaseAdmin.from('overlay_tokens').select('user_id').eq('token', token).is('revoked_at', null).maybeSingle();
+  
+  if (!tokData) {
+    res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
+    return;
+  }
+  const userId = tokData.user_id;
+
+  // 2. Get settings
+  const { data: settings } = await supabaseAdmin.from('overlay_settings').select('*').eq('user_id', userId).maybeSingle();
+
+  // 3. Get queue
+  const { data: activeQueue } = await supabaseAdmin.from('queue_players').select('*').eq('user_id', userId).in('status', ['QUEUED', 'WAITING']).order('position', { ascending: true });
 
   res.json({
-    settings: {
-      title: settings.title,
-      theme: settings.theme,
-      font_size: settings.font_size,
-      max_visible_players: settings.max_visible_players,
-      animation: settings.animation,
-      opacity: settings.opacity,
-      card_size: settings.card_size,
-      spacing: settings.spacing,
-      sound_alert: settings.sound_alert,
-      live_badge_text: settings.live_badge_text,
-      hide_playing_in_overlay: settings.hide_playing_in_overlay ?? true,
-      panel_width: settings.panel_width,
-      show_id: settings.show_id,
-      show_vip_badge: settings.show_vip_badge,
-      show_live_badge: settings.show_live_badge,
-      border_radius: settings.border_radius,
-      enable_animation: settings.enable_animation,
-      allow_promotion: settings.allow_promotion ?? false,
-      custom_colors: settings.custom_colors,
-      streamer_name: settings.streamer_name,
-      user_id: userId,
-    },
-    promotion: (settings.allow_promotion && platformPromo.enabled) ? platformPromo : null,
-    queue: activeQueue,
+    settings: settings || {},
+    queue: activeQueue || [],
+    promotion: null, // Placeholder for promo
   });
 });
 
