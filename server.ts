@@ -194,8 +194,10 @@ app.get('/api/realtime', (req, res) => {
 // Get public overlay configuration and active queue (User-Specific by Token)
 app.get('/api/public/overlay/:token', async (req, res) => {
   const { token } = req.params;
+  console.log(`[DEBUG] Overlay request for token: ${token}`);
   
   if (!supabaseAdmin) {
+    console.log('[DEBUG] supabaseAdmin not configured, using local DB fallback');
     // Fallback if Supabase not configured
     const userId = db.getUserIdByOverlayToken(token);
     if (!userId) {
@@ -210,19 +212,31 @@ app.get('/api/public/overlay/:token', async (req, res) => {
   }
 
   // 1. Get user_id by token
-  const { data: tokData } = await supabaseAdmin.from('overlay_tokens').select('user_id').eq('token', token).is('revoked_at', null).maybeSingle();
+  const { data: tokData, error: tokErr } = await supabaseAdmin.from('overlay_tokens').select('user_id').eq('token', token).is('revoked_at', null).maybeSingle();
   
+  if (tokErr) {
+    console.error('[DEBUG] Token query error:', tokErr);
+  }
   if (!tokData) {
+    console.log('[DEBUG] Token not found or revoked for token:', token);
     res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
     return;
   }
   const userId = tokData.user_id;
+  console.log('[DEBUG] Found userId:', userId);
 
   // 2. Get settings
-  const { data: settings } = await supabaseAdmin.from('overlay_settings').select('*').eq('user_id', userId).maybeSingle();
+  const { data: settings, error: setErr } = await supabaseAdmin.from('overlay_settings').select('*').eq('user_id', userId).maybeSingle();
+  if (setErr) {
+    console.error('[DEBUG] Settings query error:', setErr);
+  }
+  console.log('[DEBUG] Found settings:', settings);
 
   // 3. Get queue
-  const { data: activeQueue } = await supabaseAdmin.from('queue_players').select('*').eq('user_id', userId).in('status', ['QUEUED', 'WAITING']).order('position', { ascending: true });
+  const { data: activeQueue, error: qErr } = await supabaseAdmin.from('queue_players').select('*').eq('user_id', userId).in('status', ['QUEUED', 'WAITING']).order('position', { ascending: true });
+  if (qErr) {
+    console.error('[DEBUG] Queue query error:', qErr);
+  }
 
   res.json({
     settings: settings || {},
