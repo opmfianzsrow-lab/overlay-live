@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -140,21 +140,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     type: 'success' | 'error' | 'info';
   } | null>(null);
 
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const addDebugLog = (msg: string) => {
+  const debugLogsRef = useRef<string[]>([]);
+  const addDebugLog = useCallback((msg: string) => {
     const timestamp = new Date().toISOString();
-    setDebugLogs(prev => [...prev, `[${timestamp}] ${msg}`]);
-    console.log(`[PREVIEW-DEBUG] [${timestamp}] ${msg}`);
-  };
+    const logEntry = `[${timestamp}] ${msg}`;
+    debugLogsRef.current.push(logEntry);
+    console.log(`[PREVIEW-DEBUG] ${logEntry}`);
+  }, []);
+
   const downloadDebugLog = () => {
+    const logs = debugLogsRef.current;
+    console.log(`[PREVIEW-DEBUG] Downloading ${logs.length} logs.`);
     const element = document.createElement('a');
-    const file = new Blob([debugLogs.join('\n')], {type: 'text/plain'});
+    const file = new Blob([logs.join('\n')], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
     element.download = 'preview-debug.log';
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
   };
+
+  useEffect(() => {
+    addDebugLog('Dashboard initialized.');
+  }, [addDebugLog]);
 
   const showNotification = useCallback(
     (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -1920,18 +1928,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Preview Window Frame */}
               <div className="w-full bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:16px_16px] bg-zinc-950/80 rounded-2xl p-6 flex justify-center min-h-[460px] overflow-hidden border border-white/[0.08]">
                 <div className="w-full max-w-[440px]">
-                  <OverlayView
-                    previewSettings={{
+                  {(() => {
+                    const previewData = {
                       ...settings,
                       ...settingsForm,
                       custom_colors: {
                         ...DEFAULT_OVERLAY_COLORS,
                         ...(settingsForm.custom_colors || settings?.custom_colors || {}),
                       },
-                    } as OverlaySettings}
-                    previewQueue={queue}
-                    isPreviewMode={true}
-                  />
+                    } as OverlaySettings;
+                    addDebugLog(`Preview render. settingsForm: ${JSON.stringify(settingsForm)}`);
+                    addDebugLog(`Preview render. finalSettings: ${JSON.stringify(previewData)}`);
+                    return (
+                      <OverlayView
+                        previewSettings={previewData}
+                        previewQueue={queue}
+                        isPreviewMode={true}
+                      />
+                    );
+                  })()}
                 </div>
               </div>
             </div>
