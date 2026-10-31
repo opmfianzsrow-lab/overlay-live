@@ -28,23 +28,34 @@ const SUPABASE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkem5lemhmdGN3bWZ0ZHJueXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMDAzMTgsImV4cCI6MjEwODU3NjMxOH0.XEUvnliZN_7VJhHDHv_DPrtUO6Q81EkYpsPNZulz3rI';
 
 const supabaseServer = createClient(SUPABASE_URL, SUPABASE_KEY);
-const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY) : supabaseServer;
+// Server-only admin client using SUPABASE_SERVICE_ROLE_KEY if configured in server environment
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : supabaseServer;
 
-function getSupabaseClient(sessionToken?: string) {
+function getSupabaseClient(sessionToken?: string, supaAuthHeader?: string) {
+  // 1. If service role key is present on server, use administrative client
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return supabaseAdmin;
   }
-  if (sessionToken && sessionToken.startsWith('eyJ')) {
+  // 2. Never use custom session tokens (sess_...) as Supabase JWTs.
+  // Only forward actual Supabase JWT access tokens (starting with eyJ)
+  const candidateJwt =
+    (supaAuthHeader && supaAuthHeader.startsWith('eyJ') ? supaAuthHeader : undefined) ||
+    (sessionToken && sessionToken.startsWith('eyJ') ? sessionToken : undefined);
+
+  if (candidateJwt) {
     return createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { persistSession: false },
       global: {
-        headers: { Authorization: `Bearer ${sessionToken}` },
+        headers: { Authorization: `Bearer ${candidateJwt}` },
       },
     });
   }
   return supabaseServer;
 }
 
+// Editable settings whitelist for streamers (STRICTLY EXCLUDES streamer_token, webhook_key, webhook_secret)
 const OVERLAY_SETTINGS_COLUMNS = new Set([
   'title',
   'theme',
@@ -70,12 +81,19 @@ const OVERLAY_SETTINGS_COLUMNS = new Set([
   'border_radius',
   'enable_animation',
   'allow_promotion',
-  'webhook_key',
-  'webhook_secret',
-  'streamer_token',
   'custom_colors',
   'animation_speed',
   'dashboard_ui_theme',
+]);
+
+// Protected credential columns that can NEVER be overwritten via general settings update
+const PROTECTED_CREDENTIAL_COLUMNS = new Set([
+  'streamer_token',
+  'webhook_key',
+  'webhook_secret',
+  'id',
+  'user_id',
+  'created_at',
 ]);
 
 // Middlewares
@@ -105,7 +123,7 @@ export interface AuthenticatedRequest extends Request {
   user?: UserProfile;
 }
 
-function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
   let sessionToken = '';
 
@@ -122,9 +140,36 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
     return;
   }
 
-  const user = db.getUserBySession(sessionToken);
+  // 1. Check custom in-memory session store (sess_...)
+  let user = db.getUserBySession(sessionToken);
+
+  // 2. If not in memory store, check if token is a Supabase JWT (eyJ...)
+  if (!user && sessionToken.startsWith('eyJ')) {
+    try {
+      const { data, error } = await supabaseServer.auth.getUser(sessionToken);
+      if (!error && data?.user) {
+        user = db.getUserByAuthId(data.user.id);
+        if (!user) {
+          const syncResult = db.findOrCreateSupabaseUser({
+            auth_user_id: data.user.id,
+            email: data.user.email || '',
+            name:
+              data.user.user_metadata?.full_name ||
+              data.user.user_metadata?.name ||
+              data.user.email?.split('@')[0],
+            avatar_url:
+              data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture,
+          });
+          user = syncResult.user;
+        }
+      }
+    } catch (e) {
+      console.warn('[requireAuth] Supabase JWT validation error:', e);
+    }
+  }
+
   if (!user) {
-    res.status(401).json({ error: 'Sesi login telah berakhir. Silakan login kembali dengan akun Google Anda.' });
+    res.status(401).json({ error: 'Sesi login telah berakhir atau tidak valid. Silakan login kembali dengan akun Google Anda.' });
     return;
   }
 
@@ -136,25 +181,62 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
    AUTHENTICATION ROUTES (SUPABASE GOOGLE OAUTH & SESSIONS)
    ========================================================================== */
 
-// 1. Supabase Session Sync (Verifies and syncs authenticated Supabase user)
-app.post('/api/auth/session', (req, res) => {
-  const { auth_user_id, email, name, avatar_url } = req.body;
+// 1. Supabase Session Sync (Cryptographically verifies Supabase user before creating session)
+app.post('/api/auth/session', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  let accessToken = '';
 
-  if (!auth_user_id || typeof auth_user_id !== 'string' || auth_user_id.trim().length === 0) {
-    res.status(400).json({ error: 'ID Pengguna Supabase (auth_user_id) wajib disertakan.' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    accessToken = authHeader.slice(7).trim();
+  } else if (req.body.access_token) {
+    accessToken = String(req.body.access_token).trim();
+  }
+
+  let verifiedAuthUserId: string | null = null;
+  let verifiedEmail: string | null = null;
+  let verifiedName: string | undefined = undefined;
+  let verifiedAvatarUrl: string | undefined = undefined;
+
+  // Cryptographically verify the session token with Supabase Auth
+  if (accessToken && accessToken.startsWith('eyJ')) {
+    try {
+      const { data, error } = await supabaseServer.auth.getUser(accessToken);
+      if (error || !data?.user) {
+        console.warn('[Auth Session] Supabase token verification failed:', error?.message);
+        res.status(401).json({ error: 'Token autentikasi Supabase tidak valid atau telah kadaluarsa.' });
+        return;
+      }
+      verifiedAuthUserId = data.user.id;
+      verifiedEmail = data.user.email || null;
+      verifiedName =
+        data.user.user_metadata?.full_name ||
+        data.user.user_metadata?.name ||
+        verifiedEmail?.split('@')[0];
+      verifiedAvatarUrl =
+        data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture;
+    } catch (e) {
+      console.error('[Auth Session] Exception validating token:', e);
+      res.status(401).json({ error: 'Gagal memverifikasi sesi autentikasi dengan Supabase.' });
+      return;
+    }
+  } else {
+    // Missing or invalid bearer token format
+    res.status(401).json({
+      error: 'Akses ditolak: Token autentikasi Supabase (Bearer JWT) yang valid wajib disertakan.',
+    });
     return;
   }
 
-  if (!email || typeof email !== 'string' || !email.includes('@')) {
-    res.status(400).json({ error: 'Email yang valid wajib disertakan' });
+  if (!verifiedAuthUserId || !verifiedEmail) {
+    res.status(400).json({ error: 'Data identitas pengguna Supabase tidak lengkap.' });
     return;
   }
 
   const result = db.findOrCreateSupabaseUser({
-    auth_user_id: auth_user_id.trim(),
-    email: email.trim(),
-    name: name ? name.trim() : email.split('@')[0],
-    avatar_url,
+    auth_user_id: verifiedAuthUserId,
+    email: verifiedEmail,
+    name: req.body.name?.trim() || verifiedName,
+    avatar_url: req.body.avatar_url || verifiedAvatarUrl,
   });
 
   res.json({
@@ -247,102 +329,153 @@ app.get('/api/realtime', (req, res) => {
   realtimeHub.addClient(clientId, res, token, user?.id, isAdmin);
 });
 
+// Helper to return ONLY public presentation properties for OBS Overlay
+function sanitizePublicOverlaySettings(raw: Partial<OverlaySettings>, streamerName?: string) {
+  const customColors =
+    raw && typeof raw.custom_colors === 'object' && raw.custom_colors !== null
+      ? raw.custom_colors
+      : {};
+
+  return {
+    title: raw?.title || 'ANTRIAN SELANJUTNYA',
+    theme: raw?.theme || 'obsidian',
+    font_size: raw?.font_size || 'medium',
+    max_visible_players: raw?.max_visible_players ?? 5,
+    animation: raw?.animation || 'smooth',
+    opacity: raw?.opacity ?? 96,
+    card_size: raw?.card_size || 'normal',
+    spacing: raw?.spacing ?? 8,
+    sociabuzz_url: raw?.sociabuzz_url || 'https://sociabuzz.com',
+    min_donation: raw?.min_donation ?? 10000,
+    vip_min_donation: raw?.vip_min_donation ?? 25000,
+    vvip_min_donation: raw?.vvip_min_donation ?? 50000,
+    max_queue_limit: raw?.max_queue_limit ?? 50,
+    sound_alert: raw?.sound_alert !== false,
+    allow_free_queue: Boolean(raw?.allow_free_queue),
+    live_badge_text: raw?.live_badge_text || 'LIVE',
+    hide_playing_in_overlay: raw?.hide_playing_in_overlay ?? true,
+    panel_width: raw?.panel_width ?? 440,
+    show_id: raw?.show_id !== false,
+    show_vip_badge: raw?.show_vip_badge !== false,
+    show_live_badge: raw?.show_live_badge !== false,
+    border_radius: raw?.border_radius ?? 22,
+    enable_animation: raw?.enable_animation !== false,
+    allow_promotion: raw?.allow_promotion ?? true,
+    animation_speed: raw?.animation_speed || 'normal',
+    dashboard_ui_theme: raw?.dashboard_ui_theme || 'neobrutalism',
+    streamer_name: streamerName || raw?.streamer_name,
+    custom_colors: {
+      ...DEFAULT_OVERLAY_COLORS,
+      ...customColors,
+    },
+  };
+}
+
 // Get public overlay configuration and active queue (User-Specific by Token)
 app.get('/api/public/overlay/:token', async (req, res) => {
   const { token } = req.params;
-  
-  if (!supabaseAdmin) {
-    // Fallback if Supabase not configured
-    const userId = db.getUserIdByOverlayToken(token);
-    if (!userId) {
-      res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
-      return;
+
+  let targetUserId: string | null = null;
+  let streamerName: string | undefined = undefined;
+
+  // 1. Resolve target user ID from token
+  if (supabaseAdmin) {
+    const { data: tokData, error: tokErr } = await supabaseAdmin
+      .from('overlay_tokens')
+      .select('user_id')
+      .eq('token', token)
+      .is('revoked_at', null)
+      .maybeSingle();
+
+    if (tokErr) {
+      console.warn('[Overlay Token Query Warning]', tokErr.message);
     }
-    const settings = db.getSettings(userId);
-    const activeQueue = db.getActiveQueue(userId);
-    const platformPromo = db.getPlatformPromotion();
-
-    // Security check: Never leak webhook_key or webhook_secret to public client
-    const safeSettings: Record<string, unknown> = { ...settings };
-    delete safeSettings.webhook_key;
-    delete safeSettings.webhook_secret;
-
-    res.json({
-      settings: safeSettings,
-      promotion: (settings.allow_promotion && platformPromo.enabled) ? platformPromo : null,
-      queue: activeQueue,
-    });
-    return;
+    if (tokData?.user_id) {
+      targetUserId = tokData.user_id;
+    }
   }
 
-  // 1. Get user_id by token
-  const { data: tokData, error: tokErr } = await supabaseAdmin
-    .from('overlay_tokens')
-    .select('user_id')
-    .eq('token', token)
-    .is('revoked_at', null)
-    .maybeSingle();
-  
-  if (tokErr) {
-    console.error('[DEBUG] Token query error:', tokErr);
+  if (!targetUserId) {
+    targetUserId = db.getUserIdByOverlayToken(token);
   }
-  if (!tokData) {
+
+  if (!targetUserId) {
     res.status(404).json({ error: 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.' });
     return;
   }
-  const userId = tokData.user_id;
 
-  // 2. Get settings from Supabase
-  const { data: rawSettings, error: setErr } = await supabaseAdmin
-    .from('overlay_settings')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (setErr) {
-    console.error('[DEBUG] Settings query error:', setErr);
+  // 2. Fetch settings and streamer name from Supabase or local cache
+  let supaSettings: Record<string, unknown> | null = null;
+  if (supabaseAdmin) {
+    const { data: rawSettings } = await supabaseAdmin
+      .from('overlay_settings')
+      .select('*')
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (rawSettings) {
+      supaSettings = rawSettings;
+    }
+
+    const { data: prof } = await supabaseAdmin
+      .from('profiles')
+      .select('name')
+      .or(`id.eq.${targetUserId},auth_user_id.eq.${targetUserId}`)
+      .maybeSingle();
+
+    if (prof?.name) {
+      streamerName = prof.name;
+    }
   }
 
-  const localSettings = db.getSettings(userId);
-  const supaColors = (rawSettings && typeof rawSettings.custom_colors === 'object' && rawSettings.custom_colors !== null)
-    ? rawSettings.custom_colors
-    : (localSettings.custom_colors || {});
-
-  const safeSettings: Record<string, unknown> = {
+  const localSettings = db.getSettings(targetUserId);
+  const combinedSettings = {
     ...localSettings,
-    ...(rawSettings || {}),
-    animation_speed: rawSettings?.animation_speed || localSettings.animation_speed || 'normal',
-    dashboard_ui_theme: rawSettings?.dashboard_ui_theme || localSettings.dashboard_ui_theme || 'neobrutalism',
-    custom_colors: {
-      ...DEFAULT_OVERLAY_COLORS,
-      ...supaColors,
-    },
+    ...(supaSettings || {}),
   };
 
-  // Security check: Never leak webhook_key or webhook_secret to public client
-  delete safeSettings.webhook_key;
-  delete safeSettings.webhook_secret;
+  const safeSettings = sanitizePublicOverlaySettings(combinedSettings, streamerName || localSettings.streamer_name);
 
   // 3. Get queue
-  const { data: activeQueue, error: qErr } = await supabaseAdmin
-    .from('queue_players')
-    .select('*')
-    .eq('user_id', userId)
-    .in('status', ['QUEUED', 'WAITING'])
-    .order('position', { ascending: true });
-  if (qErr) {
-    console.error('[DEBUG] Queue query error:', qErr);
+  let queueToReturn: unknown[] = [];
+  if (supabaseAdmin) {
+    const { data: activeQueue } = await supabaseAdmin
+      .from('queue_players')
+      .select('id, player_id, name, game_id, membership, status, position, donation_id, donation_amount, joined_at')
+      .eq('user_id', targetUserId)
+      .in('status', ['QUEUED', 'WAITING'])
+      .order('position', { ascending: true });
+
+    if (activeQueue && activeQueue.length > 0) {
+      queueToReturn = activeQueue.map((qp: any) => ({
+        id: qp.id,
+        player_id: qp.player_id || qp.id,
+        position: qp.position,
+        status: qp.status,
+        joined_at: qp.joined_at,
+        player: {
+          id: qp.player_id || qp.id,
+          name: qp.name,
+          game_id: qp.game_id || '-',
+          membership: qp.membership || 'REGULAR',
+          status: qp.status,
+          created_at: qp.joined_at,
+          updated_at: qp.joined_at,
+        },
+      }));
+    }
   }
 
-  const queueToReturn = (activeQueue && activeQueue.length > 0)
-    ? activeQueue
-    : db.getActiveQueue(userId);
+  if (queueToReturn.length === 0) {
+    queueToReturn = db.getActiveQueue(targetUserId);
+  }
 
   const platformPromo = db.getPlatformPromotion();
 
   res.json({
     settings: safeSettings,
     queue: queueToReturn,
-    promotion: (safeSettings.allow_promotion && platformPromo.enabled) ? platformPromo : null,
+    promotion: safeSettings.allow_promotion && platformPromo.enabled ? platformPromo : null,
   });
 });
 
@@ -498,7 +631,8 @@ app.get('/api/admin/dashboard', requireAuth, async (req: AuthenticatedRequest, r
   const userId = req.user!.id;
   const authUserId = req.user!.auth_user_id;
   const sessionToken = req.headers['authorization']?.replace('Bearer ', '').trim();
-  const client = getSupabaseClient(sessionToken);
+  const supaAuthHeader = (req.headers['x-supabase-auth'] as string) || undefined;
+  const client = getSupabaseClient(sessionToken, supaAuthHeader);
 
   let supaSettings: Record<string, unknown> | null = null;
   let streamerName: string | undefined = undefined;
@@ -682,13 +816,19 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
   const userId = req.user!.id;
   const authUserId = req.user!.auth_user_id;
   const sessionToken = req.headers['authorization']?.replace('Bearer ', '').trim();
-  const client = getSupabaseClient(sessionToken);
+  const supaAuthHeader = (req.headers['x-supabase-auth'] as string) || undefined;
+  const client = getSupabaseClient(sessionToken, supaAuthHeader);
 
-  // 1. Whitelist fields for Supabase overlay_settings
+  // 1. Whitelist fields for Supabase overlay_settings (strictly excluding protected credentials)
   const supaPayload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
+
   for (const [key, value] of Object.entries(req.body)) {
+    if (PROTECTED_CREDENTIAL_COLUMNS.has(key)) {
+      // Explicit protection: Never overwrite tokens, secrets, or internal IDs
+      continue;
+    }
     if (OVERLAY_SETTINGS_COLUMNS.has(key)) {
       if (key === 'custom_colors') {
         if (typeof value === 'object' && value !== null) {
@@ -707,6 +847,9 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
   // 2. Persist to Supabase overlay_settings
   const candidateIds = Array.from(new Set([userId, authUserId].filter(Boolean) as string[]));
   let supabasePersistError: string | null = null;
+  let isPartialSave = false;
+  let missingColumns: string[] = [];
+  let successfulSearchId: string | null = null;
 
   try {
     let updated = false;
@@ -717,11 +860,19 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
         .eq('user_id', searchId)
         .select('id');
 
-      // Graceful fallback if database schema does not have new columns yet (Postgres code 42703)
-      if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      // Graceful fallback if database schema does not have new columns yet (Postgres code 42703 or PostgREST PGRST204)
+      if (
+        error &&
+        (error.code === '42703' ||
+          error.code === 'PGRST204' ||
+          error.message?.includes('does not exist') ||
+          error.message?.includes('could not find'))
+      ) {
         console.warn(
           '[Supabase Migration Notice] Columns custom_colors/animation_speed/dashboard_ui_theme not yet migrated in Supabase. Executing core update...'
         );
+        isPartialSave = true;
+        missingColumns = ['custom_colors', 'animation_speed', 'dashboard_ui_theme'];
         const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = supaPayload;
         const fallbackRes = await client
           .from('overlay_settings')
@@ -737,6 +888,7 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
         supabasePersistError = error.message;
       } else if (data && data.length > 0) {
         updated = true;
+        successfulSearchId = searchId;
         supabasePersistError = null;
         break;
       }
@@ -749,10 +901,18 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
         .upsert({ ...supaPayload, user_id: upsertId }, { onConflict: 'user_id' });
 
       // Fallback for upsert if columns missing
-      if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('does not exist'))) {
+      if (
+        upsertErr &&
+        (upsertErr.code === '42703' ||
+          upsertErr.code === 'PGRST204' ||
+          upsertErr.message?.includes('does not exist') ||
+          upsertErr.message?.includes('could not find'))
+      ) {
         console.warn(
           '[Supabase Migration Notice] Columns not yet in schema for upsert. Executing core upsert...'
         );
+        isPartialSave = true;
+        missingColumns = ['custom_colors', 'animation_speed', 'dashboard_ui_theme'];
         const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = supaPayload;
         const fallbackUpsertRes = await client
           .from('overlay_settings')
@@ -763,6 +923,9 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
       if (upsertErr) {
         console.error('[Supabase Settings Upsert Error]', upsertErr);
         supabasePersistError = upsertErr.message;
+      } else {
+        successfulSearchId = upsertId;
+        supabasePersistError = null;
       }
     }
 
@@ -785,18 +948,83 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
     console.error('[Supabase Settings Exception]', err);
   }
 
-  // Return 500 error if Supabase schema or connection failed
-  if (supabasePersistError && !supabasePersistError.includes('violates row-level security')) {
+  // Hard error checking: Never claim success or silently fall back to local cache if Supabase persistence failed
+  if (supabasePersistError) {
     res.status(500).json({
-      error: `Gagal menyimpan ke database Supabase: ${supabasePersistError}`,
+      error: `Gagal menyimpan ke database Supabase: ${supabasePersistError}. Pastikan migrasi SQL telah dijalankan dan izin RLS sesuai.`,
     });
     return;
   }
 
-  // 4. Update local memory cache and broadcast change
-  const updated = db.updateSettings(userId, req.body);
+  // 4. Re-read the latest saved settings directly from Supabase
+  let reFetchedSettings: Record<string, unknown> | null = null;
+  const targetReReadId = successfulSearchId || candidateIds[0] || userId;
+  try {
+    const { data: refData } = await client
+      .from('overlay_settings')
+      .select('*')
+      .eq('user_id', targetReReadId)
+      .maybeSingle();
+    if (refData) {
+      reFetchedSettings = refData;
+    }
+  } catch (reErr) {
+    console.warn('[Supabase Re-fetch Notice]', reErr);
+  }
+
+  // 5. Construct verified settings payload
+  const localSettings = db.getSettings(userId);
+  const activeCustomColors =
+    reFetchedSettings &&
+    typeof reFetchedSettings.custom_colors === 'object' &&
+    reFetchedSettings.custom_colors !== null
+      ? reFetchedSettings.custom_colors
+      : (supaPayload.custom_colors || localSettings.custom_colors || DEFAULT_OVERLAY_COLORS);
+
+  const returnedSettings: OverlaySettings = {
+    ...localSettings,
+    ...(reFetchedSettings || {}),
+    streamer_name:
+      (req.body.streamer_name as string) ||
+      (reFetchedSettings?.streamer_name as string) ||
+      localSettings.streamer_name ||
+      req.user?.name,
+    animation_speed:
+      (reFetchedSettings?.animation_speed as any) ||
+      (supaPayload.animation_speed as any) ||
+      localSettings.animation_speed ||
+      'normal',
+    dashboard_ui_theme:
+      (reFetchedSettings?.dashboard_ui_theme as any) ||
+      (supaPayload.dashboard_ui_theme as any) ||
+      localSettings.dashboard_ui_theme ||
+      'neobrutalism',
+    custom_colors: {
+      ...DEFAULT_OVERLAY_COLORS,
+      ...(activeCustomColors as any),
+    },
+  };
+
+  // 6. Update local in-memory cache and broadcast realtime update
+  db.updateSettings(userId, returnedSettings);
   realtimeHub.broadcastQueueChange(userId, 'settings_updated');
-  res.json({ success: true, settings: updated });
+
+  if (isPartialSave) {
+    res.json({
+      success: true,
+      partial: true,
+      warning:
+        'Pengaturan dasar berhasil disimpan ke Supabase, namun kolom custom (custom_colors, animation_speed, dashboard_ui_theme) belum termigrasi di database.',
+      missingColumns,
+      settings: returnedSettings,
+    });
+  } else {
+    res.json({
+      success: true,
+      partial: false,
+      settings: returnedSettings,
+    });
+  }
 });
 
 // Regenerate Token

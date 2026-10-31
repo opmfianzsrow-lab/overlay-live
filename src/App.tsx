@@ -53,8 +53,12 @@ function AppContent() {
             try {
               const res = await fetch('/api/auth/session', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session.access_token}`,
+                },
                 body: JSON.stringify({
+                  access_token: session.access_token,
                   auth_user_id: user.id,
                   email: user.email,
                   name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
@@ -147,8 +151,12 @@ function AppContent() {
             try {
               const res = await fetch('/api/auth/session', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session.access_token}`,
+                },
                 body: JSON.stringify({
+                  access_token: session.access_token,
                   auth_user_id: user.id,
                   email: user.email,
                   name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],

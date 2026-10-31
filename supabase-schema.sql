@@ -204,14 +204,101 @@ CREATE POLICY "Public validate active overlay token"
   ON public.overlay_tokens FOR SELECT
   USING (revoked_at IS NULL);
 
--- OVERLAY SETTINGS POLICIES
+-- OVERLAY SETTINGS POLICIES (Strictly restricted to owning streamer; No open public access)
 CREATE POLICY "Streamer can manage their overlay settings"
   ON public.overlay_settings FOR ALL
-  USING (user_id = public.current_profile_id());
+  USING (
+    user_id = public.current_profile_id()
+    OR auth.uid() IN (SELECT auth_user_id FROM public.profiles WHERE id = overlay_settings.user_id)
+  );
 
-CREATE POLICY "Public read overlay settings by token"
-  ON public.overlay_settings FOR SELECT
-  USING (true);
+-- Secure RPC function for public overlays (Returns ONLY presentation columns, NEVER webhook_key/webhook_secret)
+CREATE OR REPLACE FUNCTION public.get_public_overlay_by_token(streamer_token_input TEXT)
+RETURNS TABLE (
+  title TEXT,
+  theme TEXT,
+  font_size TEXT,
+  max_visible_players INT,
+  animation TEXT,
+  opacity INT,
+  card_size TEXT,
+  spacing INT,
+  min_donation INT,
+  vip_min_donation INT,
+  vvip_min_donation INT,
+  allow_free_queue BOOLEAN,
+  live_badge_text TEXT,
+  hide_playing_in_overlay BOOLEAN,
+  panel_width INT,
+  show_id BOOLEAN,
+  show_vip_badge BOOLEAN,
+  show_live_badge BOOLEAN,
+  border_radius INT,
+  enable_animation BOOLEAN,
+  allow_promotion BOOLEAN,
+  animation_speed TEXT,
+  dashboard_ui_theme TEXT,
+  custom_colors JSONB,
+  streamer_name TEXT
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  target_user_id TEXT;
+  st_name TEXT;
+BEGIN
+  -- Look up target user by active token
+  SELECT user_id INTO target_user_id 
+  FROM public.overlay_tokens 
+  WHERE token = streamer_token_input AND revoked_at IS NULL
+  LIMIT 1;
+
+  IF target_user_id IS NULL THEN
+    SELECT user_id INTO target_user_id
+    FROM public.overlay_settings
+    WHERE streamer_token = streamer_token_input
+    LIMIT 1;
+  END IF;
+
+  IF target_user_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT name INTO st_name FROM public.profiles WHERE id = target_user_id OR auth_user_id::text = target_user_id LIMIT 1;
+
+  RETURN QUERY
+  SELECT 
+    s.title,
+    s.theme,
+    s.font_size,
+    s.max_visible_players,
+    s.animation,
+    s.opacity,
+    s.card_size,
+    s.spacing,
+    s.min_donation,
+    s.vip_min_donation,
+    s.vvip_min_donation,
+    s.allow_free_queue,
+    s.live_badge_text,
+    s.hide_playing_in_overlay,
+    s.panel_width,
+    s.show_id,
+    s.show_vip_badge,
+    s.show_live_badge,
+    s.border_radius,
+    s.enable_animation,
+    s.allow_promotion,
+    s.animation_speed,
+    s.dashboard_ui_theme,
+    s.custom_colors,
+    COALESCE(st_name, s.streamer_name) AS streamer_name
+  FROM public.overlay_settings s
+  WHERE s.user_id = target_user_id
+  LIMIT 1;
+END;
+$$;
 
 -- PROFILES PUBLIC READ FOR STREAMER NAME ON OVERLAY
 CREATE POLICY "Public read streamer name for overlay"

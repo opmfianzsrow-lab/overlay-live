@@ -529,9 +529,24 @@ class Database {
 
   public updateSettings(userId: string, updates: Partial<OverlaySettings>): OverlaySettings {
     this.ensureUserSettings(userId);
+    const current = this.data.settings[userId];
+    // Security protection: Never allow general settings update to overwrite tokens, secrets, or IDs
+    const safeUpdates: Partial<OverlaySettings> = { ...updates };
+    delete (safeUpdates as any).streamer_token;
+    delete (safeUpdates as any).webhook_key;
+    delete (safeUpdates as any).webhook_secret;
+    delete (safeUpdates as any).id;
+    delete (safeUpdates as any).user_id;
+
     this.data.settings[userId] = {
-      ...this.data.settings[userId],
-      ...updates,
+      ...current,
+      ...safeUpdates,
+      // Strictly preserve original security credentials
+      streamer_token: current.streamer_token,
+      webhook_key: current.webhook_key,
+      webhook_secret: current.webhook_secret,
+      id: current.id,
+      user_id: current.user_id,
       updated_at: new Date().toISOString(),
     };
     this.saveData();

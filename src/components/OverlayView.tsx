@@ -167,18 +167,18 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
     }
 
     // Fetch overlay_settings
-    let setData: OverlaySettings | null = null;
+    let setData: Partial<OverlaySettings> | null = null;
     try {
       const { data: sRow } = await withTimeout(
         supabase
           .from('overlay_settings')
-          .select('*')
+          .select('title, theme, font_size, max_visible_players, animation, opacity, card_size, spacing, sociabuzz_url, min_donation, vip_min_donation, vvip_min_donation, max_queue_limit, sound_alert, allow_free_queue, live_badge_text, hide_playing_in_overlay, panel_width, show_id, show_vip_badge, show_live_badge, border_radius, enable_animation, allow_promotion, custom_colors, animation_speed, dashboard_ui_theme')
           .eq('user_id', targetUserId)
           .maybeSingle(),
         3000,
-        'overlay_settings.selectFull'
+        'overlay_settings.selectPublicDisplayColumns'
       );
-      if (sRow) setData = sRow as OverlaySettings;
+      if (sRow) setData = sRow as Partial<OverlaySettings>;
     } catch {}
 
     // Fetch streamer profile name

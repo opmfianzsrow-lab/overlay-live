@@ -654,7 +654,8 @@ export async function getOverlaySettingsFromSupabase(
 }
 
 /**
- * Whitelist of columns present in public.overlay_settings table.
+ * Whitelist of columns present in public.overlay_settings table that streamers are permitted to edit.
+ * Specifically excludes security credentials (streamer_token, webhook_key, webhook_secret).
  * Includes custom_colors (JSONB), animation_speed (TEXT), and dashboard_ui_theme (TEXT).
  */
 export const SUPABASE_OVERLAY_SETTINGS_COLUMNS = [
@@ -682,9 +683,6 @@ export const SUPABASE_OVERLAY_SETTINGS_COLUMNS = [
   'border_radius',
   'enable_animation',
   'allow_promotion',
-  'webhook_key',
-  'webhook_secret',
-  'streamer_token',
   'custom_colors',
   'animation_speed',
   'dashboard_ui_theme',
@@ -714,11 +712,12 @@ export function filterSupabaseOverlaySettings(raw: Partial<OverlaySettings>): Re
  * Persists overlay settings to Supabase with column whitelisting, error checking, and profile name syncing.
  * Handles both post-migration (persisting custom_colors, animation_speed, dashboard_ui_theme directly to Supabase)
  * and graceful fallback if the SQL migration has not yet been executed in Supabase SQL Editor.
+ * Returns partial: true when columns were omitted due to PGRST204 / 42703.
  */
 export async function saveOverlaySettingsToSupabase(
   profileIdOrAuthId: string,
   updates: Partial<OverlaySettings>
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; partial?: boolean; error?: string; warning?: string }> {
   if (!supabase || !profileIdOrAuthId) {
     return { success: false, error: 'Supabase client belum terkonfigurasi atau User ID tidak valid.' };
   }
@@ -726,6 +725,15 @@ export async function saveOverlaySettingsToSupabase(
   try {
     const payload = filterSupabaseOverlaySettings(updates);
     payload.updated_at = new Date().toISOString();
+
+    // Explicit security protection: Ensure credentials are never overwritten
+    delete payload.streamer_token;
+    delete payload.webhook_key;
+    delete payload.webhook_secret;
+    delete payload.id;
+    delete payload.user_id;
+
+    let isPartial = false;
 
     // 1. Sync streamer_name to profiles table if present
     if (updates.streamer_name && typeof updates.streamer_name === 'string' && updates.streamer_name.trim().length > 0) {
@@ -752,11 +760,12 @@ export async function saveOverlaySettingsToSupabase(
         .eq('user_id', searchId)
         .select('id');
 
-      // Graceful fallback if database schema does not have new columns yet (Postgres code 42703)
-      if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      // Graceful fallback if database schema does not have new columns yet (Postgres code 42703 or PGRST204)
+      if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('does not exist') || error.message?.includes('could not find'))) {
         console.warn(
           '[Supabase Migration Notice] Columns custom_colors/animation_speed/dashboard_ui_theme not yet migrated in Supabase. Executing core update...'
         );
+        isPartial = true;
         const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = payload;
         const fallbackRes = await supabase
           .from('overlay_settings')
@@ -784,10 +793,11 @@ export async function saveOverlaySettingsToSupabase(
         .upsert({ ...payload, user_id: upsertId }, { onConflict: 'user_id' });
 
       // Fallback for upsert if columns missing
-      if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('does not exist'))) {
+      if (upsertErr && (upsertErr.code === '42703' || upsertErr.code === 'PGRST204' || upsertErr.message?.includes('does not exist') || upsertErr.message?.includes('could not find'))) {
         console.warn(
           '[Supabase Migration Notice] Columns not yet in schema for upsert. Executing core upsert...'
         );
+        isPartial = true;
         const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = payload;
         const fallbackUpsertRes = await supabase
           .from('overlay_settings')
@@ -801,7 +811,11 @@ export async function saveOverlaySettingsToSupabase(
       }
     }
 
-    return { success: true };
+    return {
+      success: true,
+      partial: isPartial,
+      warning: isPartial ? 'Sebagian kolom (custom_colors, animation_speed, dashboard_ui_theme) belum termigrasi di database.' : undefined,
+    };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke database Supabase.';
     console.error('[Supabase saveOverlaySettings Exception]', msg);

@@ -205,6 +205,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
       if (adminPin) headers['x-admin-pin'] = adminPin;
 
+      // Attach active Supabase JWT if available so backend can perform user-isolated operations
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          const { data: supaSession } = await supabase.auth.getSession();
+          if (supaSession?.session?.access_token) {
+            headers['x-supabase-auth'] = supaSession.session.access_token;
+          }
+        } catch {}
+      }
+
       const res = await fetch(url, {
         method: 'POST',
         headers,
@@ -254,6 +264,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const headers: Record<string, string> = {};
       if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
       if (adminPin) headers['x-admin-pin'] = adminPin;
+
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          const { data: supaSession } = await supabase.auth.getSession();
+          if (supaSession?.session?.access_token) {
+            headers['x-supabase-auth'] = supaSession.session.access_token;
+          }
+        } catch {}
+      }
 
       const res = await fetch('/api/admin/dashboard', { headers });
       if (res.ok) {
@@ -530,10 +549,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       // 2. Direct client-side write to Supabase as dual guarantee if user is signed into Supabase
+      let clientPartial = false;
       if (isSupabaseConfigured() && supabase && user?.id) {
         const targetId = user.id || user.auth_user_id;
         if (targetId) {
           const directSaveRes = await saveOverlaySettingsToSupabase(targetId, formSnapshot);
+          if (directSaveRes.partial) {
+            clientPartial = true;
+          }
           if (!directSaveRes.success && directSaveRes.error) {
             console.warn('[Direct Supabase Sync Notice]', directSaveRes.error);
           }
@@ -559,13 +582,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return merged;
       });
 
-      setSettingsSuccess('Pengaturan berhasil disimpan!');
-      showNotification('Pengaturan berhasil disimpan ke database!', 'success');
-      setTimeout(() => setSettingsSuccess(''), 3000);
+      if (res.partial || clientPartial) {
+        setSettingsSuccess('Tersimpan sebagian (menunggu migrasi SQL Supabase)');
+        showNotification(
+          'Pengaturan dasar berhasil disimpan. Catatan: Kolom custom (warna/animasi) belum termigrasi di database Supabase.',
+          'info'
+        );
+      } else {
+        setSettingsSuccess('Seluruh pengaturan berhasil disimpan ke Supabase!');
+        showNotification('Seluruh pengaturan berhasil disimpan ke database Supabase!', 'success');
+      }
+      setTimeout(() => setSettingsSuccess(''), 4000);
     } catch (err: unknown) {
       const errMsg =
         err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke database';
       showNotification(errMsg, 'error');
+      // If saving fails, maintain dirty state and preserve local form edits
+      isDirtyRef.current = true;
+      setIsDirty(true);
     } finally {
       setSavingSettings(false);
     }
