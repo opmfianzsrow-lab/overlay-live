@@ -591,7 +591,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // URL Helpers
-  const domain = typeof window !== 'undefined' ? window.location.origin : 'https://overlay-live-by-fianzsrow.vercel.app';
+  const domain = typeof window !== 'undefined' ? window.location.origin : 'https://overlay-live-antri-nu.vercel.app';
   const hasToken = Boolean(settings?.streamer_token && settings.streamer_token.trim() !== '' && settings.streamer_token !== 'TOKEN');
   const overlayUrl = hasToken ? `${domain}/overlay/${settings!.streamer_token}` : '';
   const joinUrl = hasToken ? `${domain}/join?streamer=${settings!.streamer_token}` : `${domain}/join`;

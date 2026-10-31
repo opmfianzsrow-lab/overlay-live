@@ -5,7 +5,7 @@ import type { QueueItem, OverlaySettings, PlatformPromotion, OverlayCustomColors
 import { DEFAULT_OVERLAY_COLORS } from '../types/queue';
 import { THEMES } from '../utils/theme';
 import { playNextMatchChime, playJoinChime } from '../utils/audio';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, withTimeout } from '../lib/supabase';
 
 interface OverlayViewProps {
   token?: string;
@@ -69,46 +69,150 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 
   // Direct Supabase Fallback Query (for static Vercel deployments)
   const fetchFromSupabase = useCallback(async (targetToken: string) => {
+    const fallbackSettings: OverlaySettings = {
+      id: 'set_' + targetToken,
+      streamer_token: targetToken,
+      title: 'ANTRIAN SELANJUTNYA',
+      theme: 'obsidian',
+      font_size: 'medium',
+      max_visible_players: 5,
+      animation: 'smooth',
+      opacity: 96,
+      card_size: 'normal',
+      spacing: 8,
+      sociabuzz_url: 'https://sociabuzz.com',
+      min_donation: 10000,
+      vip_min_donation: 25000,
+      vvip_min_donation: 50000,
+      max_queue_limit: 50,
+      sound_alert: true,
+      allow_free_queue: false,
+      live_badge_text: 'LIVE',
+      hide_playing_in_overlay: true,
+      panel_width: 440,
+      show_id: true,
+      show_vip_badge: true,
+      show_live_badge: true,
+      border_radius: 22,
+      enable_animation: true,
+      custom_colors: { ...DEFAULT_OVERLAY_COLORS },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
     if (!isSupabaseConfigured() || !supabase) {
-      throw new Error('Supabase belum terkonfigurasi. Tidak dapat mengambil data antrian.');
+      return {
+        settings: fallbackSettings,
+        queue: [],
+        targetUserId: targetToken,
+      };
     }
 
-    // 1. Verify token & get user_id
-    const { data: tokData, error: tokErr } = await supabase
-      .from('overlay_tokens')
-      .select('user_id, token, revoked_at')
-      .eq('token', targetToken)
-      .maybeSingle();
+    let targetUserId: string | null = null;
 
-    if (tokErr || !tokData || tokData.revoked_at) {
-      throw new Error('Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
+    // 1. Search A: overlay_tokens table
+    try {
+      const { data: tokData } = await withTimeout(
+        supabase
+          .from('overlay_tokens')
+          .select('user_id, token, revoked_at')
+          .eq('token', targetToken)
+          .maybeSingle(),
+        3000,
+        'overlay_tokens.select'
+      );
+      if (tokData && !tokData.revoked_at) {
+        targetUserId = tokData.user_id;
+      }
+    } catch {}
+
+    // 2. Search B: overlay_settings table
+    if (!targetUserId) {
+      try {
+        const { data: setTokData } = await withTimeout(
+          supabase
+            .from('overlay_settings')
+            .select('user_id')
+            .eq('streamer_token', targetToken)
+            .maybeSingle(),
+          3000,
+          'overlay_settings.select'
+        );
+        if (setTokData) {
+          targetUserId = setTokData.user_id;
+        }
+      } catch {}
     }
 
-    const targetUserId = tokData.user_id;
+    // 3. Search C: profiles table
+    if (!targetUserId) {
+      try {
+        const { data: profTokData } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('id')
+            .or(`id.eq.${targetToken},auth_user_id.eq.${targetToken}`)
+            .maybeSingle(),
+          3000,
+          'profiles.select'
+        );
+        if (profTokData) {
+          targetUserId = profTokData.id;
+        }
+      } catch {}
+    }
 
-    // 2. Fetch overlay settings for this streamer
-    const { data: setData } = await supabase
-      .from('overlay_settings')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .maybeSingle();
+    if (!targetUserId) {
+      targetUserId = targetToken;
+    }
 
-    // 3. Fetch streamer profile name
-    const { data: profData } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', targetUserId)
-      .maybeSingle();
+    // Fetch overlay_settings
+    let setData: OverlaySettings | null = null;
+    try {
+      const { data: sRow } = await withTimeout(
+        supabase
+          .from('overlay_settings')
+          .select('*')
+          .eq('user_id', targetUserId)
+          .maybeSingle(),
+        3000,
+        'overlay_settings.selectFull'
+      );
+      if (sRow) setData = sRow as OverlaySettings;
+    } catch {}
 
-    // 4. Fetch waiting players only (QUEUED / WAITING)
-    const { data: qPlayers } = await supabase
-      .from('queue_players')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .in('status', ['QUEUED', 'WAITING'])
-      .order('position', { ascending: true });
+    // Fetch streamer profile name
+    let streamerName: string | undefined = undefined;
+    try {
+      const { data: profData } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', targetUserId)
+          .maybeSingle(),
+        3000,
+        'profiles.selectName'
+      );
+      if (profData?.name) streamerName = profData.name;
+    } catch {}
 
-    const mappedQueue: QueueItem[] = (qPlayers || []).map((qp: any) => ({
+    // Fetch waiting players only (QUEUED / WAITING)
+    let qPlayers: any[] = [];
+    try {
+      const { data: qData } = await withTimeout(
+        supabase
+          .from('queue_players')
+          .select('*')
+          .eq('user_id', targetUserId)
+          .in('status', ['QUEUED', 'WAITING'])
+          .order('position', { ascending: true }),
+        3000,
+        'queue_players.select'
+      );
+      if (qData) qPlayers = qData;
+    } catch {}
+
+    const mappedQueue: QueueItem[] = qPlayers.map((qp: any) => ({
       id: qp.id,
       player_id: qp.id,
       position: qp.position,
@@ -125,12 +229,47 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
       },
     }));
 
-    return {
-      settings: {
-        ...(setData || {}),
-        streamer_name: profData?.name,
-        user_id: targetUserId,
+    const finalSettings: OverlaySettings = {
+      id: setData?.id || 'set_' + targetUserId,
+      user_id: targetUserId,
+      streamer_token: targetToken,
+      streamer_name: streamerName || setData?.streamer_name,
+      title:
+        setData?.title && setData.title.trim().length > 0 && setData.title !== 'ANTRIAN BY1'
+          ? setData.title
+          : 'ANTRIAN SELANJUTNYA',
+      theme: setData?.theme || 'obsidian',
+      font_size: setData?.font_size || 'medium',
+      max_visible_players: setData?.max_visible_players || 5,
+      animation: setData?.animation || 'smooth',
+      opacity: setData?.opacity ?? 96,
+      card_size: setData?.card_size || 'normal',
+      spacing: setData?.spacing || 8,
+      sociabuzz_url: setData?.sociabuzz_url || 'https://sociabuzz.com',
+      min_donation: setData?.min_donation || 10000,
+      vip_min_donation: setData?.vip_min_donation || 25000,
+      vvip_min_donation: setData?.vvip_min_donation || 50000,
+      max_queue_limit: setData?.max_queue_limit || 50,
+      sound_alert: setData?.sound_alert !== false,
+      allow_free_queue: Boolean(setData?.allow_free_queue),
+      live_badge_text: setData?.live_badge_text || 'LIVE',
+      hide_playing_in_overlay: setData?.hide_playing_in_overlay ?? true,
+      panel_width: setData?.panel_width || 440,
+      show_id: setData?.show_id !== false,
+      show_vip_badge: setData?.show_vip_badge !== false,
+      show_live_badge: setData?.show_live_badge !== false,
+      border_radius: setData?.border_radius || 22,
+      enable_animation: setData?.enable_animation !== false,
+      custom_colors: {
+        ...DEFAULT_OVERLAY_COLORS,
+        ...(setData?.custom_colors || {}),
       },
+      created_at: setData?.created_at || new Date().toISOString(),
+      updated_at: setData?.updated_at || new Date().toISOString(),
+    };
+
+    return {
+      settings: finalSettings,
       queue: mappedQueue,
       targetUserId,
     };
@@ -156,10 +295,54 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
     let supaChannel: any = null;
     let isMounted = true;
 
+    // 2.5-second maximum safety timer to guarantee overlay UI renders instantaneously
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) {
+        setSettings((prev) => {
+          if (prev) return prev;
+          return {
+            id: 'set_' + streamToken,
+            streamer_token: streamToken,
+            title: 'ANTRIAN SELANJUTNYA',
+            theme: 'obsidian',
+            font_size: 'medium',
+            max_visible_players: 5,
+            animation: 'smooth',
+            opacity: 96,
+            card_size: 'normal',
+            spacing: 8,
+            sociabuzz_url: 'https://sociabuzz.com',
+            min_donation: 10000,
+            vip_min_donation: 25000,
+            vvip_min_donation: 50000,
+            max_queue_limit: 50,
+            sound_alert: true,
+            allow_free_queue: false,
+            live_badge_text: 'LIVE',
+            hide_playing_in_overlay: true,
+            panel_width: 440,
+            show_id: true,
+            show_vip_badge: true,
+            show_live_badge: true,
+            border_radius: 22,
+            enable_animation: true,
+            custom_colors: { ...DEFAULT_OVERLAY_COLORS },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as OverlaySettings;
+        });
+      }
+    }, 2500);
+
     async function loadData() {
-      // Step A: Try fetching from backend API
+      // Step A: Try fetching from backend API (with 2s timeout)
       try {
-        const res = await fetch(`/api/public/overlay/${streamToken}`);
+        const controller = new AbortController();
+        const apiTimer = setTimeout(() => controller.abort(), 2000);
+
+        const res = await fetch(`/api/public/overlay/${streamToken}`, { signal: controller.signal });
+        clearTimeout(apiTimer);
+
         if (res.ok) {
           const data = await res.json();
           if (!isMounted) return;
@@ -216,64 +399,56 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
           };
           return;
         }
-
-        // If 404 from backend API, token is invalid
-        if (res.status === 404) {
-          throw new Error('Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
-        }
       } catch (apiErr: any) {
-        // Step B: Backend API unavailable or failed -> Fallback to direct Supabase query
-        if (apiErr.message?.includes('tidak ditemukan')) {
-          if (isMounted) setErrorMsg(apiErr.message);
-          return;
+        // Fallback to direct Supabase query
+      }
+
+      // Step B: Direct Supabase query
+      try {
+        const fallbackData = await fetchFromSupabase(streamToken);
+        if (!isMounted) return;
+        setErrorMsg(null);
+        setSettings(fallbackData.settings);
+        setQueue(fallbackData.queue);
+        setConnected(true);
+
+        // Setup Supabase Realtime channel for Vercel static deployments
+        if (supabase && fallbackData.targetUserId) {
+          supaChannel = supabase.channel(`obs-overlay-${streamToken}`)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'queue_players',
+                filter: `user_id=eq.${fallbackData.targetUserId}`,
+              },
+              async () => {
+                try {
+                  const fresh = await fetchFromSupabase(streamToken);
+                  if (isMounted) setQueue(fresh.queue);
+                } catch {}
+              }
+            )
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'overlay_settings',
+                filter: `user_id=eq.${fallbackData.targetUserId}`,
+              },
+              (payload: any) => {
+                if (payload.new && isMounted) {
+                  setSettings((prev) => ({ ...prev, ...(payload.new as OverlaySettings) }));
+                }
+              }
+            )
+            .subscribe();
         }
-
-        try {
-          const fallbackData = await fetchFromSupabase(streamToken);
-          if (!isMounted) return;
-          setErrorMsg(null);
-          setSettings(fallbackData.settings as OverlaySettings);
-          setQueue(fallbackData.queue);
-          setConnected(true);
-
-          // Setup Supabase Realtime channel for Vercel static deployments
-          if (supabase && fallbackData.targetUserId) {
-            supaChannel = supabase.channel(`obs-overlay-${streamToken}`)
-              .on(
-                'postgres_changes',
-                {
-                  event: '*',
-                  schema: 'public',
-                  table: 'queue_players',
-                  filter: `user_id=eq.${fallbackData.targetUserId}`,
-                },
-                async () => {
-                  try {
-                    const fresh = await fetchFromSupabase(streamToken);
-                    if (isMounted) setQueue(fresh.queue);
-                  } catch {}
-                }
-              )
-              .on(
-                'postgres_changes',
-                {
-                  event: '*',
-                  schema: 'public',
-                  table: 'overlay_settings',
-                  filter: `user_id=eq.${fallbackData.targetUserId}`,
-                },
-                (payload: any) => {
-                  if (payload.new && isMounted) {
-                    setSettings((prev) => ({ ...prev, ...(payload.new as OverlaySettings) }));
-                  }
-                }
-              )
-              .subscribe();
-          }
-        } catch (supaErr: any) {
-          if (isMounted) {
-            setErrorMsg(supaErr.message || 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
-          }
+      } catch (supaErr: any) {
+        if (isMounted) {
+          setErrorMsg(supaErr.message || 'Overlay tidak ditemukan atau link sudah dicabut/kadaluarsa.');
         }
       }
     }
@@ -282,6 +457,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
 
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimer);
       if (activeEventSource) activeEventSource.close();
       if (supaChannel && supabase) supabase.removeChannel(supaChannel);
     };
