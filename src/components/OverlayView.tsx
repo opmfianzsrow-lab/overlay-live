@@ -613,6 +613,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
           borderColor: customColors.card_border,
           borderWidth: '1px',
           borderStyle: 'solid',
+          boxShadow: isPreviewMode ? '0 8px 24px -4px rgba(0, 0, 0, 0.4)' : '0 4px 16px rgba(0, 0, 0, 0.35)',
         }}
       >
         {/* Frame Highlight Rim */}

@@ -103,9 +103,14 @@ html, body {
 /* React Bits AnimatedList Inspired Styles */
 .rb-frame {
   position: relative;
-  box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.9), 0 8px 24px -8px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
   -webkit-backdrop-filter: blur(28px) saturate(1.8);
   backdrop-filter: blur(28px) saturate(1.8);
+}
+
+body.obs-overlay-mode .rb-frame,
+.obs-overlay-mode .rb-frame {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
 }
 
 .rb-frame-rim {
