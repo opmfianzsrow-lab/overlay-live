@@ -42,6 +42,7 @@ export interface UserProfile {
   name: string;
   avatar_url?: string;
   role: UserRole;
+  streamer_token?: string;
   created_at: string;
   updated_at?: string;
 }

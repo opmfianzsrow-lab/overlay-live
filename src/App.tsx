@@ -71,7 +71,7 @@ function AppContent() {
             }
 
             if (!loggedInUser) {
-              const directProfile = await syncUserProfile(user);
+              const { profile: directProfile } = await syncUserProfile(user);
               if (directProfile) {
                 loggedInUser = {
                   id: directProfile.id || user.id,
@@ -165,7 +165,7 @@ function AppContent() {
             }
 
             if (!loggedInUser) {
-              const directProfile = await syncUserProfile(user);
+              const { profile: directProfile } = await syncUserProfile(user);
               if (directProfile) {
                 loggedInUser = {
                   id: directProfile.id || user.id,

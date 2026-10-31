@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient, User, Session } from '@supabase/supabase-js';
-import type { UserProfile } from '../types/queue';
+import { DEFAULT_OVERLAY_COLORS, type UserProfile, type OverlaySettings } from '../types/queue';
 
 export const getSupabaseUrl = (): string => {
   const envUrl =
@@ -129,12 +129,52 @@ export interface SupabaseAuthResult {
 }
 
 /**
+ * Helper to validate UUID format
+ */
+export function isUUID(val: string): boolean {
+  return (
+    typeof val === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())
+  );
+}
+
+/**
+ * Wraps a promise with a hard timeout (default 10s)
+ */
+export function withTimeout<T>(
+  promise: PromiseLike<T>,
+  timeoutMs = 10000,
+  contextMsg = 'Proses Supabase'
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `[TIMEOUT 10s] ${contextMsg} melebihi batas waktu 10 detik. Silakan periksa koneksi jaringan atau RLS Supabase.`
+        )
+      );
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+/**
  * Ensures streamer has an active overlay token and overlay settings in Supabase.
  * Automatically backfills and repairs missing tokens or settings rows.
  */
 export async function ensureUserOverlayTokenAndSettings(profileId: string): Promise<{
   streamer_token: string;
   webhook_key: string;
+  error?: string;
 }> {
   if (!supabase) {
     const fallbackTok = '1v1_' + profileId.slice(-8);
@@ -142,47 +182,158 @@ export async function ensureUserOverlayTokenAndSettings(profileId: string): Prom
     return { streamer_token: fallbackTok, webhook_key: fallbackKey };
   }
 
+  let authUserId: string | null = null;
   try {
-    // 1. Fetch active token from overlay_tokens table
-    const { data: existingToken } = await supabase
-      .from('overlay_tokens')
-      .select('token')
-      .eq('user_id', profileId)
-      .is('revoked_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data: authData } = await withTimeout(supabase.auth.getUser(), 5000, 'auth.getUser');
+    if (authData?.user) {
+      authUserId = authData.user.id;
+    }
+  } catch (e) {
+    console.warn('[OBS Token Debug] Auth user lookup notice:', e);
+  }
 
-    let streamerToken = existingToken?.token;
+  console.log('[OBS Token Debug] Starting token verification:', {
+    profileId,
+    hasAuthUserId: Boolean(authUserId),
+  });
 
-    if (!streamerToken || streamerToken.trim() === '' || streamerToken === 'TOKEN') {
-      // Generate secure unguessable token: 1v1_ + 16 random hex characters
-      const randomArr = new Uint8Array(8);
-      if (typeof window !== 'undefined' && window.crypto) {
-        window.crypto.getRandomValues(randomArr);
-      } else {
-        for (let i = 0; i < 8; i++) randomArr[i] = Math.floor(Math.random() * 256);
+  const idsToSearch = Array.from(
+    new Set([profileId, authUserId].filter((x): x is string => Boolean(x) && typeof x === 'string' && x.trim().length > 0))
+  );
+
+  let streamerToken: string | null = null;
+  let tokenQueryError: string | null = null;
+
+  try {
+    // 1. Fetch existing unrevoked token from overlay_tokens table
+    console.log('[OBS Token Debug] Querying active token for user_id list:', idsToSearch);
+
+    for (const searchId of idsToSearch) {
+      const { data: tokData, error: tokErr } = await withTimeout(
+        supabase
+          .from('overlay_tokens')
+          .select('token')
+          .eq('user_id', searchId)
+          .is('revoked_at', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        10000,
+        'overlay_tokens.select'
+      );
+
+      if (tokErr) {
+        tokenQueryError = `[Code ${tokErr.code || 'RLS_ERR'}] ${tokErr.message}`;
+        console.error('[OBS Token Debug] overlay_tokens query error:', {
+          code: tokErr.code,
+          message: tokErr.message,
+          details: tokErr.details,
+        });
+      } else if (tokData?.token) {
+        streamerToken = tokData.token;
+        console.log(
+          '[OBS Token Debug] Query result: FOUND active token:',
+          streamerToken ? streamerToken.slice(0, 8) + '...' : ''
+        );
+        break;
       }
-      const randomHex = Array.from(randomArr)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-      streamerToken = `1v1_${randomHex}`;
+    }
 
-      await supabase
-        .from('overlay_tokens')
-        .insert({
-          user_id: profileId,
-          token: streamerToken,
-        })
-        .catch((e) => console.warn('[Supabase Token Insert Notice]', e));
+    if (!streamerToken) {
+      console.log('[OBS Token Debug] Query result: NOT_FOUND. Generating new token...');
+
+      let randomUuid = '';
+      if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+        randomUuid = window.crypto.randomUUID();
+      } else {
+        const randomArr = new Uint8Array(16);
+        if (typeof window !== 'undefined' && window.crypto) {
+          window.crypto.getRandomValues(randomArr);
+        } else {
+          for (let i = 0; i < 16; i++) randomArr[i] = Math.floor(Math.random() * 256);
+        }
+        randomUuid = Array.from(randomArr)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+      streamerToken = `1v1_${randomUuid}`;
+
+      let insertSuccess = false;
+      const insertCandidateIds = Array.from(
+        new Set([profileId, authUserId].filter((x): x is string => Boolean(x) && typeof x === 'string' && x.trim().length > 0))
+      );
+
+      for (const targetId of insertCandidateIds) {
+        console.log('[OBS Token Debug] Saving new token to overlay_tokens for target:', targetId);
+
+        // Pre-seed profile row with targetId if missing to satisfy FK constraint 23503
+        try {
+          await supabase.from('profiles').upsert(
+            {
+              id: targetId,
+              auth_user_id: authUserId || (isUUID(targetId) ? targetId : undefined),
+              name: 'Streamer',
+              email: '',
+              role: 'streamer',
+            },
+            { onConflict: 'id' }
+          );
+        } catch (seedErr) {
+          console.warn('[OBS Token Debug] Profile pre-seed notice:', seedErr);
+        }
+
+        const { error: insertTokErr } = await withTimeout(
+          supabase.from('overlay_tokens').insert({
+            user_id: targetId,
+            token: streamerToken,
+          }),
+          10000,
+          'overlay_tokens.insert'
+        );
+
+        if (!insertTokErr) {
+          console.log('[OBS Token Debug] Token save result: SUCCESS for target:', targetId);
+          insertSuccess = true;
+          tokenQueryError = null;
+          break;
+        } else {
+          console.warn('[OBS Token Debug] Token insert notice for target', targetId, ':', {
+            code: insertTokErr.code,
+            message: insertTokErr.message,
+            details: insertTokErr.details,
+          });
+          if (insertTokErr.code !== '42501' && insertTokErr.code !== '23503') {
+            tokenQueryError = `[Code ${insertTokErr.code || 'INSERT_ERR'}] ${insertTokErr.message}`;
+          }
+        }
+      }
     }
 
     // 2. Fetch or update overlay_settings table
-    const { data: existingSettings } = await supabase
-      .from('overlay_settings')
-      .select('id, streamer_token, webhook_key')
-      .eq('user_id', profileId)
-      .maybeSingle();
+    let existingSettings: { id?: string; streamer_token?: string; webhook_key?: string } | null =
+      null;
+
+    for (const searchId of idsToSearch) {
+      const { data: setArr, error: setErr } = await withTimeout(
+        supabase
+          .from('overlay_settings')
+          .select('id, streamer_token, webhook_key')
+          .eq('user_id', searchId)
+          .maybeSingle(),
+        10000,
+        'overlay_settings.select'
+      );
+
+      if (setErr) {
+        console.warn('[OBS Token Debug] overlay_settings query notice:', {
+          code: setErr.code,
+          message: setErr.message,
+        });
+      } else if (setArr) {
+        existingSettings = setArr;
+        break;
+      }
+    }
 
     let webhookKey = existingSettings?.webhook_key;
     if (!webhookKey) {
@@ -200,36 +351,90 @@ export async function ensureUserOverlayTokenAndSettings(profileId: string): Prom
     }
 
     if (!existingSettings) {
-      await supabase
-        .from('overlay_settings')
-        .insert({
-          user_id: profileId,
-          streamer_token: streamerToken,
-          webhook_key: webhookKey,
-          title: 'ANTRIAN BY1',
-          theme: 'obsidian',
-          min_donation: 10000,
-          vip_min_donation: 25000,
-          vvip_min_donation: 50000,
-        })
-        .catch((e) => console.warn('[Supabase Settings Insert Notice]', e));
+      console.log('[OBS Token Debug] Inserting row to overlay_settings...');
+      const insertSettingsCandidateIds = Array.from(
+        new Set([profileId, authUserId].filter((x): x is string => Boolean(x) && typeof x === 'string' && x.trim().length > 0))
+      );
+
+      for (const targetId of insertSettingsCandidateIds) {
+        // Pre-seed profile row with targetId if missing to satisfy FK constraint 23503
+        try {
+          await supabase.from('profiles').upsert(
+            {
+              id: targetId,
+              auth_user_id: authUserId || (isUUID(targetId) ? targetId : undefined),
+              name: 'Streamer',
+              email: '',
+              role: 'streamer',
+            },
+            { onConflict: 'id' }
+          );
+        } catch (seedErr) {
+          console.warn('[OBS Token Debug] Profile pre-seed notice (settings):', seedErr);
+        }
+
+        const { error: insertSetErr } = await withTimeout(
+          supabase.from('overlay_settings').insert({
+            user_id: targetId,
+            streamer_token: streamerToken,
+            webhook_key: webhookKey,
+            title: 'ANTRIAN BY1',
+            theme: 'obsidian',
+            min_donation: 10000,
+            vip_min_donation: 25000,
+            vvip_min_donation: 50000,
+          }),
+          10000,
+          'overlay_settings.insert'
+        );
+
+        if (!insertSetErr) {
+          console.log('[OBS Token Debug] overlay_settings insert SUCCESS for target:', targetId);
+          break;
+        } else {
+          console.warn('[OBS Token Debug] overlay_settings insert notice for target', targetId, ':', {
+            code: insertSetErr.code,
+            message: insertSetErr.message,
+          });
+        }
+      }
     } else if (!existingSettings.streamer_token || existingSettings.streamer_token !== streamerToken) {
-      await supabase
-        .from('overlay_settings')
-        .update({
-          streamer_token: streamerToken,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', profileId)
-        .catch((e) => console.warn('[Supabase Settings Update Notice]', e));
+      console.log('[OBS Token Debug] Updating streamer_token in overlay_settings...');
+      const updateCandidateIds = Array.from(
+        new Set([profileId, authUserId].filter((x): x is string => Boolean(x) && typeof x === 'string' && x.trim().length > 0))
+      );
+      for (const updateId of updateCandidateIds) {
+        try {
+          await withTimeout(
+            supabase
+              .from('overlay_settings')
+              .update({
+                streamer_token: streamerToken,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', updateId),
+            10000,
+            'overlay_settings.update'
+          );
+        } catch (e) {
+          console.warn('[OBS Token Debug] overlay_settings update notice:', e);
+        }
+      }
     }
 
-    return { streamer_token: streamerToken, webhook_key: webhookKey };
-  } catch (err) {
-    console.warn('[Supabase Token Repair Exception]', err);
+    return {
+      streamer_token: streamerToken,
+      webhook_key: webhookKey,
+      error: tokenQueryError || undefined,
+    };
+  } catch (err: unknown) {
+    const errMsg =
+      err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat memproses token Supabase';
+    console.error('[OBS Token Debug] Exception caught in ensureUserOverlayTokenAndSettings:', errMsg);
     return {
       streamer_token: '1v1_' + profileId.slice(-8),
       webhook_key: 'sb_' + profileId.slice(-8),
+      error: errMsg,
     };
   }
 }
@@ -265,32 +470,39 @@ export async function regenerateOverlayTokenInSupabase(profileId: string): Promi
 
   try {
     // 1. Revoke existing active tokens for this user in overlay_tokens
-    await supabase
-      .from('overlay_tokens')
-      .update({ revoked_at: now })
-      .eq('user_id', profileId)
-      .is('revoked_at', null)
-      .catch((e) => console.warn('[Supabase Token Revoke Notice]', e));
+    await withTimeout(
+      supabase
+        .from('overlay_tokens')
+        .update({ revoked_at: now })
+        .eq('user_id', profileId)
+        .is('revoked_at', null),
+      10000,
+      'overlay_tokens.revoke'
+    ).catch((e) => console.warn('[Supabase Token Revoke Notice]', e));
 
     // 2. Insert new active token into overlay_tokens
-    await supabase
-      .from('overlay_tokens')
-      .insert({
+    await withTimeout(
+      supabase.from('overlay_tokens').insert({
         user_id: profileId,
         token: newToken,
         created_at: now,
-      })
-      .catch((e) => console.warn('[Supabase Token Insert Notice]', e));
+      }),
+      10000,
+      'overlay_tokens.insertNew'
+    ).catch((e) => console.warn('[Supabase Token Insert Notice]', e));
 
     // 3. Update overlay_settings table streamer_token
-    await supabase
-      .from('overlay_settings')
-      .update({
-        streamer_token: newToken,
-        updated_at: now,
-      })
-      .eq('user_id', profileId)
-      .catch((e) => console.warn('[Supabase Settings Token Update Notice]', e));
+    await withTimeout(
+      supabase
+        .from('overlay_settings')
+        .update({
+          streamer_token: newToken,
+          updated_at: now,
+        })
+        .eq('user_id', profileId),
+      10000,
+      'overlay_settings.updateToken'
+    ).catch((e) => console.warn('[Supabase Settings Token Update Notice]', e));
 
     return { streamer_token: newToken };
   } catch (err) {
@@ -304,83 +516,136 @@ export async function regenerateOverlayTokenInSupabase(profileId: string): Promi
  */
 export async function getOverlaySettingsFromSupabase(
   profileIdOrAuthId: string
-): Promise<OverlaySettings | null> {
-  if (!supabase || !profileIdOrAuthId) return null;
+): Promise<{ settings: OverlaySettings | null; error?: string }> {
+  if (!supabase || !profileIdOrAuthId) {
+    return { settings: null, error: 'Supabase client belum terkonfigurasi' };
+  }
 
   try {
-    // Look up profile by id or auth_user_id
     let profileId = profileIdOrAuthId;
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('id, auth_user_id, name')
-      .or(`id.eq.${profileIdOrAuthId},auth_user_id.eq.${profileIdOrAuthId}`)
-      .maybeSingle();
+    let profName: string | undefined = undefined;
 
-    if (prof) {
-      profileId = prof.id;
+    // Safely query profiles table without invalid UUID syntax errors
+    if (isUUID(profileIdOrAuthId)) {
+      const { data: prof, error: profErr } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('id, auth_user_id, name')
+          .or(`id.eq.${profileIdOrAuthId},auth_user_id.eq.${profileIdOrAuthId}`)
+          .maybeSingle(),
+        10000,
+        'profiles.select.uuid'
+      );
+      if (profErr) {
+        console.error('[OBS Token Debug] profiles query error:', profErr.message);
+      } else if (prof) {
+        profileId = prof.id;
+        profName = prof.name;
+      }
+    } else {
+      const { data: prof, error: profErr } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('id, auth_user_id, name')
+          .eq('id', profileIdOrAuthId)
+          .maybeSingle(),
+        10000,
+        'profiles.select.text'
+      );
+      if (profErr) {
+        console.error('[OBS Token Debug] profiles text query error:', profErr.message);
+      } else if (prof) {
+        profileId = prof.id;
+        profName = prof.name;
+      }
     }
 
-    // Ensure token & settings exist
-    const { streamer_token, webhook_key } = await ensureUserOverlayTokenAndSettings(profileId);
+    // Ensure token & settings exist with 10s max timeout
+    const tokenRes = await ensureUserOverlayTokenAndSettings(profileId);
+    const { streamer_token, webhook_key, error: tokenErr } = tokenRes;
 
     // Fetch full overlay_settings row
-    const { data: settings } = await supabase
-      .from('overlay_settings')
-      .select('*')
-      .eq('user_id', profileId)
-      .maybeSingle();
+    const idsToSearch = Array.from(new Set([profileId, profileIdOrAuthId].filter(Boolean)));
+    let settingsRow: OverlaySettings | null = null;
 
-    if (settings) {
+    for (const searchId of idsToSearch) {
+      const { data: sRow, error: sErr } = await withTimeout(
+        supabase
+          .from('overlay_settings')
+          .select('*')
+          .eq('user_id', searchId)
+          .maybeSingle(),
+        10000,
+        'overlay_settings.selectFull'
+      );
+
+      if (sErr) {
+        console.error('[OBS Token Debug] overlay_settings full query error:', sErr.message);
+      } else if (sRow) {
+        settingsRow = sRow as OverlaySettings;
+        break;
+      }
+    }
+
+    if (settingsRow) {
       return {
-        ...settings,
-        streamer_name: prof?.name,
-        streamer_token: settings.streamer_token || streamer_token,
-        webhook_key: settings.webhook_key || webhook_key,
-        custom_colors: {
-          ...DEFAULT_OVERLAY_COLORS,
-          ...(settings.custom_colors || {}),
-        },
-      } as OverlaySettings;
+        settings: {
+          ...settingsRow,
+          streamer_name: profName || settingsRow.streamer_name,
+          streamer_token: settingsRow.streamer_token || streamer_token,
+          webhook_key: settingsRow.webhook_key || webhook_key,
+          custom_colors: {
+            ...DEFAULT_OVERLAY_COLORS,
+            ...(settingsRow.custom_colors || {}),
+          },
+        } as OverlaySettings,
+        error: tokenErr,
+      };
     }
 
     // Fallback constructed settings
     return {
-      id: 'set_' + profileId,
-      user_id: profileId,
-      streamer_name: prof?.name,
-      streamer_token: streamer_token,
-      webhook_key: webhook_key,
-      title: 'ANTRIAN BY1',
-      theme: 'obsidian',
-      font_size: 'medium',
-      max_visible_players: 5,
-      animation: 'smooth',
-      opacity: 96,
-      card_size: 'normal',
-      spacing: 8,
-      sociabuzz_url: 'https://sociabuzz.com',
-      min_donation: 10000,
-      vip_min_donation: 25000,
-      vvip_min_donation: 50000,
-      max_queue_limit: 50,
-      sound_alert: true,
-      allow_free_queue: false,
-      live_badge_text: 'LIVE',
-      hide_playing_in_overlay: false,
-      panel_width: 440,
-      show_id: true,
-      show_vip_badge: true,
-      show_live_badge: true,
-      border_radius: 22,
-      enable_animation: true,
-      allow_promotion: false,
-      custom_colors: { ...DEFAULT_OVERLAY_COLORS },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    } as OverlaySettings;
-  } catch (err) {
-    console.error('[Supabase getOverlaySettings Error]', err);
-    return null;
+      settings: {
+        id: 'set_' + profileId,
+        user_id: profileId,
+        streamer_name: profName,
+        streamer_token: streamer_token,
+        webhook_key: webhook_key,
+        title: 'ANTRIAN BY1',
+        theme: 'obsidian',
+        font_size: 'medium',
+        max_visible_players: 5,
+        animation: 'smooth',
+        opacity: 96,
+        card_size: 'normal',
+        spacing: 8,
+        sociabuzz_url: 'https://sociabuzz.com',
+        min_donation: 10000,
+        vip_min_donation: 25000,
+        vvip_min_donation: 50000,
+        max_queue_limit: 50,
+        sound_alert: true,
+        allow_free_queue: false,
+        live_badge_text: 'LIVE',
+        hide_playing_in_overlay: false,
+        panel_width: 440,
+        show_id: true,
+        show_vip_badge: true,
+        show_live_badge: true,
+        border_radius: 22,
+        enable_animation: true,
+        allow_promotion: false,
+        custom_colors: { ...DEFAULT_OVERLAY_COLORS },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as OverlaySettings,
+      error: tokenErr,
+    };
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : 'Gagal mengambil overlay settings dari Supabase';
+    console.error('[Supabase getOverlaySettings Error]', msg);
+    return { settings: null, error: msg };
   }
 }
 
@@ -421,12 +686,30 @@ export async function syncUserProfile(authUser: User): Promise<{
 
       if (existingProfile) {
         profileRecord = existingProfile as UserProfile;
+        // Ensure profiles table also contains a row where id = authUserId to satisfy FK constraints for legacy profiles
+        if (existingProfile.id !== authUserId) {
+          try {
+            await supabase.from('profiles').upsert(
+              {
+                id: authUserId,
+                auth_user_id: authUserId,
+                name: existingProfile.name || name,
+                email: existingProfile.email || email,
+                avatar_url: existingProfile.avatar_url || avatarUrl,
+                role: existingProfile.role || 'streamer',
+              },
+              { onConflict: 'id' }
+            );
+          } catch (e) {
+            console.warn('[Supabase Profile Sync] Legacy profile alias pre-seed notice:', e);
+          }
+        }
       } else {
-        // 2. Profile missing: Safely insert profile record
+        // 2. Profile missing: Safely insert profile record using authUserId as primary id
         const { data: inserted } = await supabase
           .from('profiles')
           .insert({
-            id: deterministicId,
+            id: authUserId,
             auth_user_id: authUserId,
             name,
             email,
@@ -438,11 +721,28 @@ export async function syncUserProfile(authUser: User): Promise<{
 
         if (inserted) {
           profileRecord = inserted as UserProfile;
+        } else {
+          // Fallback insert with deterministicId if authUserId insert failed
+          const { data: fallbackInserted } = await supabase
+            .from('profiles')
+            .insert({
+              id: deterministicId,
+              auth_user_id: authUserId,
+              name,
+              email,
+              avatar_url: avatarUrl,
+              role: 'streamer',
+            })
+            .select('id, auth_user_id, name, email, avatar_url, role, created_at, updated_at')
+            .maybeSingle();
+          if (fallbackInserted) {
+            profileRecord = fallbackInserted as UserProfile;
+          }
         }
       }
 
       // 3. Guarantee active overlay token and settings exist in Supabase
-      const targetProfileId = profileRecord ? profileRecord.id : deterministicId;
+      const targetProfileId = profileRecord ? profileRecord.id : authUserId;
       const { streamer_token } = await ensureUserOverlayTokenAndSettings(targetProfileId);
 
       if (profileRecord) {
