@@ -64,6 +64,38 @@ import {
   regenerateOverlayTokenInSupabase,
 } from '../lib/supabase';
 
+function sanitizeSettingsForLog(s: Partial<OverlaySettings> | null | undefined) {
+  if (!s) return null;
+  return {
+    title: s.title,
+    sociabuzz_url: s.sociabuzz_url,
+    min_donation: s.min_donation,
+    vip_min_donation: s.vip_min_donation,
+    vvip_min_donation: s.vvip_min_donation,
+    theme: s.theme,
+    font_size: s.font_size,
+    max_visible_players: s.max_visible_players,
+    animation: s.animation,
+    opacity: s.opacity,
+    card_size: s.card_size,
+    spacing: s.spacing,
+    sound_alert: s.sound_alert,
+    allow_free_queue: s.allow_free_queue,
+    live_badge_text: s.live_badge_text,
+    hide_playing_in_overlay: s.hide_playing_in_overlay,
+    panel_width: s.panel_width,
+    show_id: s.show_id,
+    show_vip_badge: s.show_vip_badge,
+    show_live_badge: s.show_live_badge,
+    border_radius: s.border_radius,
+    enable_animation: s.enable_animation,
+    animation_speed: s.animation_speed,
+    dashboard_ui_theme: s.dashboard_ui_theme,
+    custom_colors: s.custom_colors,
+    updated_at: s.updated_at,
+  };
+}
+
 interface AdminDashboardProps {
   user?: UserProfile;
   sessionToken?: string;
@@ -115,6 +147,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
 
+  // Diagnostic logging buffer
+  const debugLogsRef = useRef<string[]>([]);
+  const addDebugLog = useCallback((msg: string) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${msg}`;
+    debugLogsRef.current.push(logEntry);
+    console.log(`[SETTINGS-DEBUG-V1] ${logEntry}`);
+  }, []);
+
+  const downloadDebugLog = () => {
+    const logs = debugLogsRef.current;
+    console.log(`[SETTINGS-DEBUG-V1] Downloading ${logs.length} logs.`);
+    const element = document.createElement('a');
+    const file = new Blob([logs.join('\n')], { type: 'text/plain' });
+    element.href = URL.createObjectURL(file);
+    element.download = 'settings-debug-v1.log';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  // Version marker: SETTINGS-DEBUG-V1
+  useEffect(() => {
+    console.log(
+      '%c[SETTINGS-DEBUG-V1] Dashboard Mounted & Active (Version: SETTINGS-DEBUG-V1)',
+      'background: #111; color: #00ff88; font-size: 14px; font-weight: bold; padding: 4px 8px; border-radius: 4px;'
+    );
+    addDebugLog('[SETTINGS-DEBUG-V1] Dashboard Mounted & Active');
+  }, [addDebugLog]);
+
   // Settings form state (Client-side single source of truth during editing)
   const [settingsForm, setSettingsForm] = useState<Partial<OverlaySettings>>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -123,17 +185,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const isDirtyRef = useRef(false);
   const [isDirty, setIsDirty] = useState(false);
 
+  // Edit version and request sequence tracking
+  const editVersionRef = useRef<number>(0);
+  const fetchSeqRef = useRef<number>(0);
+  const latestCompletedFetchSeqRef = useRef<number>(0);
+
+  // Centralized tracking mechanism for all settingsForm mutations (Requirement 1)
+  const updateSettingsForm = useCallback(
+    (
+      callerSource: string,
+      action:
+        | Partial<OverlaySettings>
+        | ((prev: Partial<OverlaySettings>) => Partial<OverlaySettings>)
+    ) => {
+      setSettingsForm((prev) => {
+        const next = typeof action === 'function' ? action(prev) : action;
+        editVersionRef.current += 1;
+
+        const timestamp = new Date().toISOString();
+        const isDirtyNow = isDirtyRef.current;
+        const currentVer = editVersionRef.current;
+
+        // Structured console logging with safe sanitized values (never log secret tokens/keys)
+        console.groupCollapsed(
+          `%c[SETTINGS-DEBUG-V1][FORM_UPDATE #${currentVer}] ${callerSource} @ ${timestamp}`,
+          'color: #00bcd4; font-weight: bold;'
+        );
+        console.log('Timestamp:', timestamp);
+        console.log('Caller Source:', callerSource);
+        console.log('Edit Version:', currentVer);
+        console.log('isDirty:', isDirtyNow);
+        console.log('title: before =', prev.title, '=> after =', next.title);
+        console.log('sociabuzz_url: before =', prev.sociabuzz_url, '=> after =', next.sociabuzz_url);
+        console.log('min_donation: before =', prev.min_donation, '=> after =', next.min_donation);
+        console.log('Sanitized Before Snapshot:', sanitizeSettingsForLog(prev));
+        console.log('Sanitized After Snapshot:', sanitizeSettingsForLog(next));
+        console.trace(`[SETTINGS-DEBUG-V1] Stack Trace for ${callerSource}`);
+        console.groupEnd();
+
+        addDebugLog(
+          `[FORM_UPDATE #${currentVer}] Source=${callerSource} | dirty=${isDirtyNow} | title: "${prev.title || ''}" -> "${next.title || ''}" | min_donation: ${prev.min_donation} -> ${next.min_donation} | sociabuzz_url: "${prev.sociabuzz_url || ''}" -> "${next.sociabuzz_url || ''}"`
+        );
+
+        return next;
+      });
+    },
+    [addDebugLog]
+  );
+
   // Dedicated field updater to prevent stale closures and track dirty state
   const handleUpdateFormField = useCallback(
     <K extends keyof OverlaySettings>(key: K, value: OverlaySettings[K]) => {
       isDirtyRef.current = true;
       setIsDirty(true);
-      setSettingsForm((prev) => ({
+      updateSettingsForm(`handleUpdateFormField(${String(key)})`, (prev) => ({
         ...prev,
         [key]: value,
       }));
     },
-    []
+    [updateSettingsForm]
   );
 
   // PIN change state
@@ -162,30 +272,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     type: 'success' | 'error' | 'info';
   } | null>(null);
 
-  const debugLogsRef = useRef<string[]>([]);
-  const addDebugLog = useCallback((msg: string) => {
-    const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${msg}`;
-    debugLogsRef.current.push(logEntry);
-    console.log(`[PREVIEW-DEBUG] ${logEntry}`);
-  }, []);
-
-  const downloadDebugLog = () => {
-    const logs = debugLogsRef.current;
-    console.log(`[PREVIEW-DEBUG] Downloading ${logs.length} logs.`);
-    const element = document.createElement('a');
-    const file = new Blob([logs.join('\n')], {type: 'text/plain'});
-    element.href = URL.createObjectURL(file);
-    element.download = 'preview-debug.log';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  useEffect(() => {
-    addDebugLog('Dashboard initialized.');
-  }, [addDebugLog]);
-
   const showNotification = useCallback(
     (message: string, type: 'success' | 'error' | 'info' = 'info') => {
       setToast({ message, type });
@@ -202,18 +288,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
-      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
-      if (adminPin) headers['x-admin-pin'] = adminPin;
-
-      // Attach active Supabase JWT if available so backend can perform user-isolated operations
+      let supaJwt = '';
       if (isSupabaseConfigured() && supabase) {
         try {
           const { data: supaSession } = await supabase.auth.getSession();
           if (supaSession?.session?.access_token) {
-            headers['x-supabase-auth'] = supaSession.session.access_token;
+            supaJwt = supaSession.session.access_token;
           }
         } catch {}
       }
+
+      if (supaJwt) {
+        headers['Authorization'] = `Bearer ${supaJwt}`;
+        if (sessionToken) headers['x-session-token'] = sessionToken;
+        headers['x-supabase-auth'] = supaJwt;
+      } else if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+        headers['x-session-token'] = sessionToken;
+      }
+
+      if (adminPin) headers['x-admin-pin'] = adminPin;
 
       const res = await fetch(url, {
         method: 'POST',
@@ -248,102 +342,168 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onLogoutRef.current = onLogout;
   }, [onLogout]);
 
-  // Fetch full dashboard
-  const fetchDashboard = useCallback(async () => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
+  // Fetch full dashboard (Instrumented with sequence tracking & trigger tracking)
+  const fetchDashboard = useCallback(
+    async (triggerReason: string = 'mount_or_initial') => {
+      const callTime = new Date().toISOString();
+      const currentSeq = ++fetchSeqRef.current;
 
-    let dashboardSettings: OverlaySettings | null = null;
-    let dashboardQueue: QueueItem[] = [];
-    let dashboardDonations: Donation[] = [];
-    let dashboardStats: QueueStats | null = null;
-    let dashboardLogs: ActivityLog[] = [];
-    let dashboardWebhooks: WebhookEvent[] = [];
+      console.groupCollapsed(
+        `%c[SETTINGS-DEBUG-V1][FETCH_START #${currentSeq}] Pemicu: "${triggerReason}" @ ${callTime}`,
+        'color: #eab308; font-weight: bold;'
+      );
+      console.log('Call Timestamp:', callTime);
+      console.log('Trigger Reason:', triggerReason);
+      console.log('Sequence Number:', currentSeq);
+      console.log('isInitialized:', isInitializedRef.current);
+      console.log('isDirty:', isDirtyRef.current);
+      console.log('isFetching (active):', isFetchingRef.current);
+      console.trace(`[SETTINGS-DEBUG-V1] Stack Trace for fetchDashboard (${triggerReason})`);
+      console.groupEnd();
 
-    try {
-      const headers: Record<string, string> = {};
-      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
-      if (adminPin) headers['x-admin-pin'] = adminPin;
+      addDebugLog(
+        `[FETCH_START #${currentSeq}] Trigger="${triggerReason}" | isInit=${isInitializedRef.current} | isDirty=${isDirtyRef.current}`
+      );
 
-      if (isSupabaseConfigured() && supabase) {
-        try {
-          const { data: supaSession } = await supabase.auth.getSession();
-          if (supaSession?.session?.access_token) {
-            headers['x-supabase-auth'] = supaSession.session.access_token;
-          }
-        } catch {}
-      }
-
-      const res = await fetch('/api/admin/dashboard', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        dashboardSettings = data.settings;
-        dashboardQueue = data.queue || [];
-        dashboardDonations = data.donations || [];
-        dashboardStats = data.stats || null;
-        dashboardLogs = data.logs || [];
-        dashboardWebhooks = data.webhook_events || [];
-      } else if (res.status === 401 && !user) {
-        isFetchingRef.current = false;
-        onLogoutRef.current();
+      if (isFetchingRef.current) {
+        addDebugLog(`[FETCH_SKIPPED #${currentSeq}] Already fetching, skipped`);
         return;
       }
-    } catch (e) {
-      console.warn('API /api/admin/dashboard unreachable, using Supabase fallback:', e);
-    }
+      isFetchingRef.current = true;
 
-    // Direct Supabase Fallback if settings or streamer_token is missing
-    if (
-      (!dashboardSettings ||
-        !dashboardSettings.streamer_token ||
-        dashboardSettings.streamer_token === 'TOKEN') &&
-      user
-    ) {
+      let dashboardSettings: OverlaySettings | null = null;
+      let dashboardQueue: QueueItem[] = [];
+      let dashboardDonations: Donation[] = [];
+      let dashboardStats: QueueStats | null = null;
+      let dashboardLogs: ActivityLog[] = [];
+      let dashboardWebhooks: WebhookEvent[] = [];
+      let dataSource = 'Unknown';
+
       try {
-        const targetId = user.id || user.auth_user_id;
-        if (targetId) {
-          const directRes = await getOverlaySettingsFromSupabase(targetId);
-          if (directRes.settings) {
-            dashboardSettings = directRes.settings;
-          }
-          if (directRes.error && (!dashboardSettings || !dashboardSettings.streamer_token)) {
-            setTokenError(directRes.error);
-          } else {
-            setTokenError(null);
-          }
+        const headers: Record<string, string> = {};
+        let supaJwt = '';
+        if (isSupabaseConfigured() && supabase) {
+          try {
+            const { data: supaSession } = await supabase.auth.getSession();
+            if (supaSession?.session?.access_token) {
+              supaJwt = supaSession.session.access_token;
+            }
+          } catch {}
         }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : 'Gagal mengambil data token dari Supabase.';
-        console.warn('Direct Supabase settings fetch exception:', errMsg);
-        setTokenError(errMsg);
-      }
-    }
 
-    if (dashboardSettings) {
-      setSettings(dashboardSettings);
-      // Rules 1, 2 & 3: settingsForm is the single source of truth during editing.
-      // Server data ONLY populates settingsForm on the very first initialization.
-      // After initialization, fetchDashboard never touches settingsForm.
-      if (!isInitializedRef.current) {
-        setSettingsForm(dashboardSettings);
-        isInitializedRef.current = true;
-      }
-      if (dashboardSettings.streamer_token && dashboardSettings.streamer_token !== 'TOKEN') {
-        setTokenError(null);
-      }
-    }
-    setQueue(dashboardQueue);
-    setDonations(dashboardDonations);
-    setStats(dashboardStats);
-    setLogs(dashboardLogs);
-    if (dashboardWebhooks.length > 0) setWebhookEvents(dashboardWebhooks);
+        if (supaJwt) {
+          headers['Authorization'] = `Bearer ${supaJwt}`;
+          if (sessionToken) headers['x-session-token'] = sessionToken;
+          headers['x-supabase-auth'] = supaJwt;
+        } else if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
+          headers['x-session-token'] = sessionToken;
+        }
 
-    if (dashboardSettings?.dashboard_ui_theme && !localStorage.getItem('dashboard_ui_theme')) {
-      setUiTheme(dashboardSettings.dashboard_ui_theme);
-    }
-    setLoading(false);
-    isFetchingRef.current = false;
-  }, [sessionToken, adminPin, user?.id]);
+        if (adminPin) headers['x-admin-pin'] = adminPin;
+
+        const res = await fetch('/api/admin/dashboard', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          dashboardSettings = data.settings;
+          dashboardQueue = data.queue || [];
+          dashboardDonations = data.donations || [];
+          dashboardStats = data.stats || null;
+          dashboardLogs = data.logs || [];
+          dashboardWebhooks = data.webhook_events || [];
+          dataSource = 'API /api/admin/dashboard';
+        } else if (res.status === 401 && !user) {
+          isFetchingRef.current = false;
+          onLogoutRef.current();
+          return;
+        }
+      } catch (e) {
+        console.warn('API /api/admin/dashboard unreachable, using Supabase fallback:', e);
+      }
+
+      // Direct Supabase Fallback if settings or streamer_token is missing
+      if (
+        (!dashboardSettings ||
+          !dashboardSettings.streamer_token ||
+          dashboardSettings.streamer_token === 'TOKEN') &&
+        user
+      ) {
+        try {
+          const targetId = user.id || user.auth_user_id;
+          if (targetId) {
+            const directRes = await getOverlaySettingsFromSupabase(targetId);
+            if (directRes.settings) {
+              dashboardSettings = directRes.settings;
+              dataSource = 'Direct Supabase (getOverlaySettingsFromSupabase)';
+            }
+            if (directRes.error && (!dashboardSettings || !dashboardSettings.streamer_token)) {
+              setTokenError(directRes.error);
+            } else {
+              setTokenError(null);
+            }
+          }
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : 'Gagal mengambil data token dari Supabase.';
+          console.warn('Direct Supabase settings fetch exception:', errMsg);
+          setTokenError(errMsg);
+        }
+      }
+
+      const finishTime = new Date().toISOString();
+      const isOutdatedResponse = currentSeq < latestCompletedFetchSeqRef.current;
+      latestCompletedFetchSeqRef.current = Math.max(latestCompletedFetchSeqRef.current, currentSeq);
+
+      let didMutateForm = false;
+      if (dashboardSettings) {
+        setSettings(dashboardSettings);
+
+        // Rules 1, 2 & 3: settingsForm is the single source of truth during editing.
+        // Server data ONLY populates settingsForm on the very first initialization.
+        // After initialization, fetchDashboard never touches settingsForm.
+        if (!isInitializedRef.current) {
+          didMutateForm = true;
+          updateSettingsForm('fetchDashboard (first initialization)', dashboardSettings);
+          isInitializedRef.current = true;
+        } else {
+          didMutateForm = false;
+        }
+
+        if (dashboardSettings.streamer_token && dashboardSettings.streamer_token !== 'TOKEN') {
+          setTokenError(null);
+        }
+      }
+
+      console.groupCollapsed(
+        `%c[SETTINGS-DEBUG-V1][FETCH_END #${currentSeq}] Response received @ ${finishTime}`,
+        'color: #10b981; font-weight: bold;'
+      );
+      console.log('Finished At:', finishTime);
+      console.log('Sequence Number:', currentSeq);
+      console.log('Out-of-order / Stale response detected?:', isOutdatedResponse);
+      console.log('Data Source:', dataSource);
+      console.log('Received updated_at:', dashboardSettings?.updated_at || 'N/A');
+      console.log('Did mutate settingsForm?:', didMutateForm);
+      console.log('Sanitized Received Settings:', sanitizeSettingsForLog(dashboardSettings));
+      console.groupEnd();
+
+      addDebugLog(
+        `[FETCH_END #${currentSeq}] source=${dataSource} | updated_at=${dashboardSettings?.updated_at} | didMutateForm=${didMutateForm} | isStale=${isOutdatedResponse}`
+      );
+
+      setQueue(dashboardQueue);
+      setDonations(dashboardDonations);
+      setStats(dashboardStats);
+      setLogs(dashboardLogs);
+      if (dashboardWebhooks.length > 0) setWebhookEvents(dashboardWebhooks);
+
+      if (dashboardSettings?.dashboard_ui_theme && !localStorage.getItem('dashboard_ui_theme')) {
+        setUiTheme(dashboardSettings.dashboard_ui_theme);
+      }
+      setLoading(false);
+      isFetchingRef.current = false;
+    },
+    [sessionToken, adminPin, user?.id, user, updateSettingsForm, addDebugLog]
+  );
 
   // Fetch admin platform data
   const fetchAdminData = useCallback(async () => {
@@ -385,7 +545,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Initial load + Realtime SSE listener
   useEffect(() => {
-    fetchDashboard();
+    fetchDashboard('mount_effect');
     if (user?.role === 'admin') {
       fetchAdminData();
     }
@@ -396,11 +556,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     eventSource.addEventListener('init', (e) => {
       try {
         const payload = JSON.parse(e.data);
+        console.log(
+          '%c[SETTINGS-DEBUG-V1][SSE_INIT] SSE init payload received',
+          'color: #8b5cf6; font-weight: bold;',
+          {
+            hasSettings: Boolean(payload.settings),
+            isInitialized: isInitializedRef.current,
+            isDirty: isDirtyRef.current,
+            sanitizedSettings: sanitizeSettingsForLog(payload.settings),
+          }
+        );
+        addDebugLog(
+          `[SSE_INIT] hasSettings=${Boolean(payload.settings)} | isInit=${isInitializedRef.current} | isDirty=${isDirtyRef.current}`
+        );
+
         if (payload.settings) {
           setSettings(payload.settings);
           // Only initialize settingsForm if never initialized and user has not started editing
           if (!isInitializedRef.current && !isDirtyRef.current) {
-            setSettingsForm(payload.settings);
+            updateSettingsForm('SSE init event', payload.settings);
             isInitializedRef.current = true;
           }
         }
@@ -414,6 +588,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     eventSource.addEventListener('queue_update', (e) => {
       try {
         const payload = JSON.parse(e.data);
+        console.log(
+          '%c[SETTINGS-DEBUG-V1][SSE_QUEUE_UPDATE] queue_update received',
+          'color: #8b5cf6;',
+          { reason: payload.reason, hasSettings: Boolean(payload.settings) }
+        );
+        addDebugLog(`[SSE_QUEUE_UPDATE] reason=${payload.reason}`);
+
         // Rule 4: queue_update only updates dashboard and queue data, NEVER settingsForm!
         if (payload.settings) {
           setSettings(payload.settings);
@@ -423,7 +604,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (payload.logs) setLogs(payload.logs);
         // Refresh dashboard on webhook or donation events without overwriting settingsForm
         if (payload.reason?.includes('sociabuzz') || payload.reason?.includes('donation')) {
-          fetchDashboard();
+          fetchDashboard(`sse_queue_update_${payload.reason || 'event'}`);
         }
       } catch (err) {
         console.error('Error parsing admin queue_update SSE:', err);
@@ -440,7 +621,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await callAdminApi('/api/admin/queue/next');
       showNotification('Next match dimulai!', 'success');
-      fetchDashboard();
+      fetchDashboard('handleNextMatch');
     } catch (err: unknown) {
       showNotification(err instanceof Error ? err.message : 'Gagal next match', 'error');
     }
@@ -450,7 +631,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await callAdminApi('/api/admin/queue/play', { queue_id: queueId });
       showNotification('Player diset ke status PLAYING', 'success');
-      fetchDashboard();
+      fetchDashboard('handleSetPlaying');
     } catch (err: unknown) {
       showNotification(err instanceof Error ? err.message : 'Gagal set playing', 'error');
     }
@@ -460,7 +641,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await callAdminApi('/api/admin/queue/done', { queue_id: queueId });
       showNotification('Player ditandai selesai (DONE)', 'success');
-      fetchDashboard();
+      fetchDashboard('handleSetDone');
     } catch (err: unknown) {
       showNotification(err instanceof Error ? err.message : 'Gagal set done', 'error');
     }
@@ -470,7 +651,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await callAdminApi('/api/admin/queue/skip', { queue_id: queueId });
       showNotification('Player berhasil dilewati (skip)', 'info');
-      fetchDashboard();
+      fetchDashboard('handleSkip');
     } catch (err: unknown) {
       showNotification(err instanceof Error ? err.message : 'Gagal skip player', 'error');
     }
@@ -482,10 +663,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await callAdminApi('/api/admin/queue/remove', { queue_id: queueId });
       showNotification('Player berhasil dihapus dari antrian', 'success');
-      fetchDashboard();
+      fetchDashboard('handleRemove');
     } catch (err: unknown) {
       showNotification(err instanceof Error ? err.message : 'Gagal hapus player', 'error');
-      fetchDashboard();
+      fetchDashboard('handleRemove_error_fallback');
     }
   };
 
@@ -496,7 +677,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         `Posisi antrian digeser ke ${direction === 'up' ? 'atas' : 'bawah'}`,
         'info'
       );
-      fetchDashboard();
+      fetchDashboard('handleMove');
     } catch (err: unknown) {
       showNotification(err instanceof Error ? err.message : 'Gagal menggeser antrian', 'error');
     }
@@ -512,7 +693,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       player_id: editingPlayer.id,
       ...updates,
     });
-    fetchDashboard();
+    fetchDashboard('handleSavePlayerEdit');
   };
 
   const handleAddPlayer = async (data: {
@@ -521,7 +702,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     membership: MembershipType;
   }) => {
     await callAdminApi('/api/admin/queue/manual-add', data);
-    fetchDashboard();
+    fetchDashboard('handleAddPlayer');
   };
 
   const handleSimulateDonation = async (data: {
@@ -530,7 +711,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     message: string;
   }) => {
     await callAdminApi('/api/admin/simulate-donation', data);
-    fetchDashboard();
+    fetchDashboard('handleSimulateDonation');
   };
 
   const handleSaveSettings = async (e?: React.FormEvent) => {
@@ -539,35 +720,122 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSettingsSuccess('');
 
     // Capture snapshot of current form state before network request
+    const requestStartTime = new Date().toISOString();
+    const editVersionStart = editVersionRef.current;
     const formSnapshot = { ...settingsForm };
+    const sanitizedSnapshot = sanitizeSettingsForLog(formSnapshot);
 
+    console.groupCollapsed(
+      `%c[SETTINGS-DEBUG-V1][SAVE_START] Save initiated @ ${requestStartTime} (Version #${editVersionStart})`,
+      'color: #3b82f6; font-weight: bold;'
+    );
+    console.log('Request Start Time:', requestStartTime);
+    console.log('Edit Version at Start:', editVersionStart);
+    console.log('Snapshot to Save (Sanitized):', sanitizedSnapshot);
+    console.groupEnd();
+
+    addDebugLog(
+      `[SAVE_START] ver=${editVersionStart} | title="${formSnapshot.title || ''}" | min_donation=${formSnapshot.min_donation} | sociabuzz_url="${formSnapshot.sociabuzz_url || ''}"`
+    );
+
+    let httpStatus = 0;
     try {
       // 1. Persist via server API (which writes to Supabase with column whitelist, updates profiles.name, and broadcasts SSE)
-      const res = await callAdminApi('/api/admin/settings', formSnapshot);
-      if (!res || !res.settings) {
-        throw new Error('Server tidak mengembalikan respons yang valid saat menyimpan pengaturan.');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      let supaJwt = '';
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          const { data: supaSession } = await supabase.auth.getSession();
+          if (supaSession?.session?.access_token) {
+            supaJwt = supaSession.session.access_token;
+          }
+        } catch {}
+      }
+
+      if (supaJwt) {
+        headers['Authorization'] = `Bearer ${supaJwt}`;
+        if (sessionToken) headers['x-session-token'] = sessionToken;
+        headers['x-supabase-auth'] = supaJwt;
+      } else if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+        headers['x-session-token'] = sessionToken;
+      }
+
+      if (adminPin) headers['x-admin-pin'] = adminPin;
+
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(formSnapshot),
+      });
+
+      httpStatus = response.status;
+      const res = await response.json().catch(() => ({}));
+
+      if (!response.ok || !res || !res.settings) {
+        throw new Error(
+          res?.error || `Server HTTP error ${httpStatus} saat menyimpan pengaturan.`
+        );
       }
 
       // 2. Direct client-side write to Supabase as dual guarantee if user is signed into Supabase
       let clientPartial = false;
-      if (isSupabaseConfigured() && supabase && user?.id) {
-        const targetId = user.id || user.auth_user_id;
-        if (targetId) {
-          const directSaveRes = await saveOverlaySettingsToSupabase(targetId, formSnapshot);
-          if (directSaveRes.partial) {
-            clientPartial = true;
-          }
-          if (!directSaveRes.success && directSaveRes.error) {
-            console.warn('[Direct Supabase Sync Notice]', directSaveRes.error);
-          }
+      let clientSaveSuccess = false;
+      const targetId = user?.id || user?.auth_user_id;
+      if (isSupabaseConfigured() && supabase && targetId) {
+        const directSaveRes = await saveOverlaySettingsToSupabase(targetId, formSnapshot);
+        clientSaveSuccess = directSaveRes.success;
+        if (directSaveRes.partial) {
+          clientPartial = true;
+        }
+        if (!directSaveRes.success && directSaveRes.error) {
+          console.warn('[Direct Supabase Sync Notice]', directSaveRes.error);
         }
       }
 
-      // 3. Update dashboard settings
+      // 3. Re-read directly from Supabase for audit verification (Requirement 2)
+      let supabaseReRead: Partial<OverlaySettings> | null = null;
+      if (targetId) {
+        try {
+          const reReadRes = await getOverlaySettingsFromSupabase(targetId);
+          if (reReadRes.settings) {
+            supabaseReRead = reReadRes.settings;
+          }
+        } catch (reErr) {
+          console.warn('[Supabase Re-Read Debug Error]', reErr);
+        }
+      }
+
+      const supabasePersisted = Boolean(
+        (!res.partial || clientSaveSuccess) &&
+          supabaseReRead &&
+          supabaseReRead.title === formSnapshot.title &&
+          Number(supabaseReRead.min_donation) === Number(formSnapshot.min_donation)
+      );
+
+      console.groupCollapsed(
+        `%c[SETTINGS-DEBUG-V1][SAVE_END] Save finished @ ${new Date().toISOString()} | HTTP ${httpStatus}`,
+        'color: #10b981; font-weight: bold;'
+      );
+      console.log('HTTP Status:', httpStatus);
+      console.log('supabase_persisted:', supabasePersisted);
+      console.log('Server isPartial:', res.partial);
+      console.log('Client Save Success:', clientSaveSuccess);
+      console.log('Re-read from Supabase (Sanitized):', sanitizeSettingsForLog(supabaseReRead));
+      console.log('Server Returned Settings (Sanitized):', sanitizeSettingsForLog(res.settings));
+      console.groupEnd();
+
+      addDebugLog(
+        `[SAVE_END] HTTP=${httpStatus} | supabase_persisted=${supabasePersisted} | supa_re_read_title="${supabaseReRead?.title || ''}" | supa_re_read_min=${supabaseReRead?.min_donation}`
+      );
+
+      // 4. Update dashboard settings
       setSettings(res.settings);
 
-      // 4. Resolve race conditions: merge response with any in-flight edits user typed during save
-      setSettingsForm((current) => {
+      // 5. Resolve race conditions: merge response with any in-flight edits user typed during save
+      updateSettingsForm('handleSaveSettings (post-save merge)', (current) => {
         const merged: Partial<OverlaySettings> = { ...res.settings };
         let anyInFlightEdits = false;
         for (const key of Object.keys(current) as (keyof OverlaySettings)[]) {
@@ -596,6 +864,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (err: unknown) {
       const errMsg =
         err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke database';
+
+      console.groupCollapsed(
+        `%c[SETTINGS-DEBUG-V1][SAVE_ERROR] Failed @ ${new Date().toISOString()}`,
+        'color: #ef4444; font-weight: bold;'
+      );
+      console.error('HTTP Status:', httpStatus);
+      console.error('Error message:', errMsg);
+      console.log('Edit version at failure:', editVersionRef.current);
+      console.trace('[SETTINGS-DEBUG-V1] Stack Trace for handleSaveSettings Failure');
+      console.groupEnd();
+
+      addDebugLog(`[SAVE_ERROR] HTTP=${httpStatus} | errMsg="${errMsg}"`);
       showNotification(errMsg, 'error');
       // If saving fails, maintain dirty state and preserve local form edits
       isDirtyRef.current = true;
@@ -608,7 +888,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleColorsChange = (newColors: OverlayCustomColors) => {
     isDirtyRef.current = true;
     setIsDirty(true);
-    setSettingsForm((prev) => ({
+    updateSettingsForm('handleColorsChange', (prev) => ({
       ...prev,
       custom_colors: newColors,
     }));
@@ -617,7 +897,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleResetColors = () => {
     isDirtyRef.current = true;
     setIsDirty(true);
-    setSettingsForm((prev) => ({
+    updateSettingsForm('handleResetColors', (prev) => ({
       ...prev,
       custom_colors: { ...DEFAULT_OVERLAY_COLORS },
     }));
@@ -650,7 +930,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       if (newToken) {
         setSettings((prev) => (prev ? { ...prev, streamer_token: newToken } : null));
-        setSettingsForm((prev) => ({ ...prev, streamer_token: newToken }));
+        updateSettingsForm('handleConfirmRegenerateToken', (prev) => ({
+          ...prev,
+          streamer_token: newToken,
+        }));
         showNotification(
           'Token OBS Overlay berhasil diperbarui! Mohon perbarui URL Browser Source pada OBS Studio Anda.',
           'success'
@@ -666,7 +949,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } finally {
       setIsRegeneratingToken(false);
       setShowRegenerateModal(false);
-      fetchDashboard();
+      fetchDashboard('post_token_regenerate');
     }
   };
 
@@ -1961,7 +2244,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         type="button"
                         onClick={() => {
                           setTokenError(null);
-                          fetchDashboard();
+                          fetchDashboard('retry_token_button');
                         }}
                         className="px-3 py-1 rounded-full text-[11px] font-medium bg-red-500/20 hover:bg-red-500/30 text-white border border-red-500/40 flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
@@ -2029,8 +2312,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         ...(settingsForm.custom_colors || settings?.custom_colors || {}),
                       },
                     } as OverlaySettings;
-                    addDebugLog(`Preview render. settingsForm: ${JSON.stringify(settingsForm)}`);
-                    addDebugLog(`Preview render. finalSettings: ${JSON.stringify(previewData)}`);
+                    console.log(
+                      '%c[SETTINGS-DEBUG-V1][PREVIEW_RENDER] Preview mounted/rendered',
+                      'color: #38bdf8;',
+                      {
+                        previewTitle: previewData.title,
+                        previewMinDonation: previewData.min_donation,
+                        isInitialized: isInitializedRef.current,
+                        isDirty: isDirtyRef.current,
+                      }
+                    );
+                    addDebugLog(
+                      `[PREVIEW_RENDER] title="${previewData.title || ''}" | min=${previewData.min_donation} | isDirty=${isDirtyRef.current}`
+                    );
                     return (
                       <OverlayView
                         previewSettings={previewData}
@@ -2273,7 +2567,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={fetchDashboard}
+                    onClick={() => fetchDashboard('refresh_logs_button')}
                     className="apple-button-secondary px-3.5 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />

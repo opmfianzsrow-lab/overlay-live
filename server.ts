@@ -4,7 +4,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 dotenv.config({ override: true });
 
@@ -121,33 +121,31 @@ function checkRateLimit(ip: string): boolean {
 // User Authentication Middleware (Strict Multi-Tenant Isolation)
 export interface AuthenticatedRequest extends Request {
   user?: UserProfile;
+  supabaseJwt?: string;
+  supabaseClient?: SupabaseClient | any;
 }
 
 async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
-  let sessionToken = '';
-
+  let bearerToken = '';
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    sessionToken = authHeader.slice(7).trim();
-  } else if (req.headers['x-session-token']) {
-    sessionToken = String(req.headers['x-session-token']).trim();
-  } else if (req.query.session_token) {
-    sessionToken = String(req.query.session_token).trim();
+    bearerToken = authHeader.slice(7).trim();
   }
+  const customSessionToken = (
+    (req.headers['x-session-token'] as string) ||
+    (req.query.session_token as string) ||
+    ''
+  ).trim();
 
-  if (!sessionToken) {
-    res.status(401).json({ error: 'Akses ditolak: Silakan login terlebih dahulu dengan Google.' });
-    return;
-  }
+  let user: UserProfile | null = null;
+  let validatedJwt: string | undefined = undefined;
 
-  // 1. Check custom in-memory session store (sess_...)
-  let user = db.getUserBySession(sessionToken);
-
-  // 2. If not in memory store, check if token is a Supabase JWT (eyJ...)
-  if (!user && sessionToken.startsWith('eyJ')) {
+  // 1. Primary path: Check if Bearer token is a real Supabase Auth JWT (starts with eyJ...)
+  if (bearerToken && bearerToken.startsWith('eyJ')) {
     try {
-      const { data, error } = await supabaseServer.auth.getUser(sessionToken);
+      const { data, error } = await supabaseServer.auth.getUser(bearerToken);
       if (!error && data?.user) {
+        validatedJwt = bearerToken;
         user = db.getUserByAuthId(data.user.id);
         if (!user) {
           const syncResult = db.findOrCreateSupabaseUser({
@@ -162,18 +160,47 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
           });
           user = syncResult.user;
         }
+      } else if (error) {
+        console.warn('[requireAuth] Bearer JWT validation failed:', error.message);
       }
     } catch (e) {
-      console.warn('[requireAuth] Supabase JWT validation error:', e);
+      console.warn('[requireAuth] Bearer JWT validation exception:', e);
     }
   }
 
+  // 2. Secondary path: If not authenticated via Bearer JWT, check customSessionToken or bearerToken if it starts with sess_
   if (!user) {
-    res.status(401).json({ error: 'Sesi login telah berakhir atau tidak valid. Silakan login kembali dengan akun Google Anda.' });
+    const candidateSessionToken = customSessionToken || (bearerToken.startsWith('sess_') ? bearerToken : '');
+    if (candidateSessionToken) {
+      user = db.getUserBySession(candidateSessionToken);
+    }
+  }
+
+  // 3. Fallback path: Check x-supabase-auth header for JWT if bearerToken wasn't JWT
+  const supaAuthHeader = ((req.headers['x-supabase-auth'] as string) || '').trim();
+  if (!validatedJwt && supaAuthHeader.startsWith('eyJ')) {
+    try {
+      const { data, error } = await supabaseServer.auth.getUser(supaAuthHeader);
+      if (!error && data?.user) {
+        validatedJwt = supaAuthHeader;
+        if (!user) {
+          user = db.getUserByAuthId(data.user.id);
+        }
+      }
+    } catch {}
+  }
+
+  if (!user) {
+    res.status(401).json({
+      error:
+        'Akses ditolak: Sesi login telah berakhir atau tidak valid. Silakan login kembali dengan akun Google/Email Anda.',
+    });
     return;
   }
 
   req.user = user;
+  req.supabaseJwt = validatedJwt;
+  req.supabaseClient = getSupabaseClient(validatedJwt);
   next();
 }
 
@@ -630,15 +657,29 @@ app.post('/api/webhooks/sociabuzz/:streamerKey', handleSociabuzzWebhook);
 app.get('/api/admin/dashboard', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const authUserId = req.user!.auth_user_id;
-  const sessionToken = req.headers['authorization']?.replace('Bearer ', '').trim();
-  const supaAuthHeader = (req.headers['x-supabase-auth'] as string) || undefined;
-  const client = getSupabaseClient(sessionToken, supaAuthHeader);
+  const client = req.supabaseClient || getSupabaseClient(req.supabaseJwt);
 
   let supaSettings: Record<string, unknown> | null = null;
   let streamerName: string | undefined = undefined;
 
   try {
-    const candidateIds = Array.from(new Set([userId, authUserId].filter(Boolean) as string[]));
+    let supaProfileId: string | null = null;
+    if (authUserId) {
+      try {
+        const { data: profData } = await client
+          .from('profiles')
+          .select('id')
+          .eq('auth_user_id', authUserId)
+          .maybeSingle();
+        if (profData?.id) {
+          supaProfileId = profData.id;
+        }
+      } catch (e) {
+        console.warn('[Supabase Profile Lookup Notice]', e);
+      }
+    }
+
+    const candidateIds = Array.from(new Set([supaProfileId, userId, authUserId].filter(Boolean) as string[]));
     for (const searchId of candidateIds) {
       const { data, error } = await client
         .from('overlay_settings')
@@ -815,9 +856,7 @@ app.post('/api/admin/queue/manual-add', requireAuth, (req: AuthenticatedRequest,
 app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const authUserId = req.user!.auth_user_id;
-  const sessionToken = req.headers['authorization']?.replace('Bearer ', '').trim();
-  const supaAuthHeader = (req.headers['x-supabase-auth'] as string) || undefined;
-  const client = getSupabaseClient(sessionToken, supaAuthHeader);
+  const client = req.supabaseClient || getSupabaseClient(req.supabaseJwt);
 
   // 1. Whitelist fields for Supabase overlay_settings (strictly excluding protected credentials)
   const supaPayload: Record<string, unknown> = {
@@ -845,7 +884,52 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
   }
 
   // 2. Persist to Supabase overlay_settings
-  const candidateIds = Array.from(new Set([userId, authUserId].filter(Boolean) as string[]));
+  let supaProfileId: string | null = null;
+  if (authUserId) {
+    try {
+      const { data: profData, error: profErr } = await client
+        .from('profiles')
+        .select('id')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+      if (profErr) {
+        console.warn('[Supabase Settings Profile Lookup Notice]', profErr.message);
+      } else if (profData?.id) {
+        supaProfileId = profData.id;
+      }
+    } catch (e) {
+      console.warn('[Supabase Settings Profile Lookup Notice]', e);
+    }
+
+    // Ensure profile row exists in public.profiles table so public.current_profile_id() resolves
+    if (!supaProfileId) {
+      const targetProfileId = userId || ('usr_' + authUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12));
+      try {
+        const { data: insertedProf, error: insErr } = await client
+          .from('profiles')
+          .insert({
+            id: targetProfileId,
+            auth_user_id: authUserId,
+            name: req.user?.name || 'Streamer',
+            email: req.user?.email || '',
+            role: 'streamer',
+          })
+          .select('id')
+          .maybeSingle();
+        if (!insErr && insertedProf?.id) {
+          supaProfileId = insertedProf.id;
+        } else if (insErr) {
+          console.warn('[Supabase Profiles Pre-seed Notice]', insErr.message);
+        }
+      } catch (e) {
+        console.warn('[Supabase Profiles Pre-seed Exception]', e);
+      }
+    }
+  }
+
+  const candidateIds = Array.from(new Set([supaProfileId, userId, authUserId].filter(Boolean) as string[]));
+  console.log('[DEBUG SETTINGS SAVE] authUserId:', authUserId, '| supaProfileId:', supaProfileId, '| userId:', userId, '| candidateIds:', candidateIds);
+
   let supabasePersistError: string | null = null;
   let isPartialSave = false;
   let missingColumns: string[] = [];
@@ -859,6 +943,8 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
         .update(supaPayload)
         .eq('user_id', searchId)
         .select('id');
+
+      console.log(`[DEBUG SETTINGS UPDATE] searchId=${searchId}: data=`, data, '| error=', error);
 
       // Graceful fallback if database schema does not have new columns yet (Postgres code 42703 or PostgREST PGRST204)
       if (
@@ -896,9 +982,17 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
 
     if (!updated && candidateIds.length > 0) {
       const upsertId = candidateIds[0];
+      const localSet = db.getSettings(userId);
+      const upsertPayload = {
+        streamer_token: localSet.streamer_token || ('1v1_' + upsertId.slice(-8)),
+        webhook_key: localSet.webhook_key || ('sb_' + upsertId.slice(-8)),
+        ...supaPayload,
+        user_id: upsertId,
+      };
+
       let { error: upsertErr } = await client
         .from('overlay_settings')
-        .upsert({ ...supaPayload, user_id: upsertId }, { onConflict: 'user_id' });
+        .upsert(upsertPayload, { onConflict: 'user_id' });
 
       // Fallback for upsert if columns missing
       if (
@@ -913,10 +1007,10 @@ app.post('/api/admin/settings', requireAuth, async (req: AuthenticatedRequest, r
         );
         isPartialSave = true;
         missingColumns = ['custom_colors', 'animation_speed', 'dashboard_ui_theme'];
-        const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = supaPayload;
+        const { custom_colors, animation_speed, dashboard_ui_theme, ...corePayload } = upsertPayload;
         const fallbackUpsertRes = await client
           .from('overlay_settings')
-          .upsert({ ...corePayload, user_id: upsertId }, { onConflict: 'user_id' });
+          .upsert(corePayload, { onConflict: 'user_id' });
         upsertErr = fallbackUpsertRes.error;
       }
 
