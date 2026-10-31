@@ -506,7 +506,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
   const showVipBadge = settings?.show_vip_badge !== false;
 
   // Title: Prioritize user title or "ANTRIAN SELANJUTNYA"
-  const titleText = settings?.title && settings.title.trim().length > 0 && settings.title !== 'ANTRIAN BY1'
+  const titleText = settings?.title && settings.title.trim().length > 0
     ? settings.title
     : 'ANTRIAN SELANJUTNYA';
 
@@ -661,7 +661,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
           )}
         </div>
 
-        {/* Sub-Header Section Badge: ANTRIAN SELANJUTNYA */}
+        {/* Sub-Header Section Badge: DAFTAR PEMAIN */}
         <div
           className="px-4 py-1.5 flex items-center justify-between text-[11px] font-bold tracking-wider uppercase border-b transition-colors"
           style={{
@@ -675,7 +675,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: customColors.accent_color }}
             />
-            ANTRIAN SELANJUTNYA
+            <span>DAFTAR PEMAIN</span>
           </span>
           <span
             className="font-mono text-[10px] px-2 py-0.5 rounded-full font-bold"
