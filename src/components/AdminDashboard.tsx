@@ -473,27 +473,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             .from('overlay_settings')
             .upsert(
               {
+                ...res.settings,
                 user_id: user.id,
-                streamer_token: res.settings.streamer_token,
-                custom_colors: res.settings.custom_colors,
-                title: res.settings.title,
-                theme: res.settings.theme,
-                font_size: res.settings.font_size,
-                max_visible_players: res.settings.max_visible_players,
-                animation: res.settings.animation,
-                opacity: res.settings.opacity,
-                card_size: res.settings.card_size,
-                spacing: res.settings.spacing,
-                sound_alert: res.settings.sound_alert,
-                live_badge_text: res.settings.live_badge_text,
-                hide_playing_in_overlay: res.settings.hide_playing_in_overlay,
-                panel_width: res.settings.panel_width,
-                show_id: res.settings.show_id,
-                show_vip_badge: res.settings.show_vip_badge,
-                show_live_badge: res.settings.show_live_badge,
-                border_radius: res.settings.border_radius,
-                enable_animation: res.settings.enable_animation,
-                allow_promotion: res.settings.allow_promotion,
                 updated_at: new Date().toISOString(),
               },
               { onConflict: 'user_id' }
