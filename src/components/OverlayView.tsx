@@ -235,7 +235,7 @@ export const OverlayView: React.FC<OverlayViewProps> = ({
       streamer_token: targetToken,
       streamer_name: streamerName || setData?.streamer_name,
       title:
-        setData?.title && setData.title.trim().length > 0 && setData.title !== 'ANTRIAN BY1'
+        setData?.title && setData.title.trim().length > 0
           ? setData.title
           : 'ANTRIAN SELANJUTNYA',
       theme: setData?.theme || 'obsidian',
